@@ -289,6 +289,8 @@ function AppPasswordChanger() {
 function PenaltyManager({ state, setState }) {
   const week = state.weekKey;
   const penaltyDefs = state.penaltyDefs || PENALTIES_DEF;
+  const [customLabel, setCustomLabel] = useState({});
+  const [customPts, setCustomPts] = useState({});
 
   const togglePenalty = (kidId, penaltyId) => {
     setState(prev => {
@@ -301,21 +303,51 @@ function PenaltyManager({ state, setState }) {
     });
   };
 
+  const addCustomPenalty = (kidId) => {
+    const label = (customLabel[kidId] || '').trim();
+    const pts = Math.max(1, parseInt(customPts[kidId]) || 5);
+    if (!label) return;
+    const id = 'custom_' + kidId + '_' + Date.now();
+    setState(prev => {
+      const newDef = { id, icon: '⚡', label, pts, kidId };
+      const newDefs = [...(prev.penaltyDefs || PENALTIES_DEF), newDef];
+      const kidPenalties = { ...(prev.penalties?.[kidId] || {}), [id]: week+'_confirmed' };
+      const next = { ...prev, penaltyDefs: newDefs, penalties: { ...(prev.penalties||{}), [kidId]: kidPenalties } };
+      saveState(next); return next;
+    });
+    setCustomLabel(prev => ({ ...prev, [kidId]: '' }));
+    setCustomPts(prev => ({ ...prev, [kidId]: '' }));
+  };
+
+  const removeCustomPenalty = (kidId, penaltyId) => {
+    setState(prev => {
+      const newDefs = (prev.penaltyDefs || PENALTIES_DEF).filter(p => p.id !== penaltyId);
+      const kidPenalties = { ...(prev.penalties?.[kidId] || {}) };
+      delete kidPenalties[penaltyId];
+      const next = { ...prev, penaltyDefs: newDefs, penalties: { ...(prev.penalties||{}), [kidId]: kidPenalties } };
+      saveState(next); return next;
+    });
+  };
+
   return (
     <div>
       {KIDS.map(kid => {
+        const standardDefs = penaltyDefs.filter(p => !p.kidId);
+        const customDefs = penaltyDefs.filter(p => p.kidId === kid.id);
         const active = getKidActivePenalties(state.penalties, kid.id, week, penaltyDefs);
         const totalPts = active.reduce((s,p)=>s+p.pts,0);
         return (
-          <div key={kid.id} style={{marginBottom:20}}>
+          <div key={kid.id} style={{marginBottom:24}}>
             <div style={{display:'flex', alignItems:'center', gap:10, marginBottom:12}}>
               <div style={{width:36, height:36, borderRadius:'50%', background:kid.color,
                 display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, color:'#fff'}}>{kid.emoji}</div>
               <div style={{fontWeight:800, fontSize:15, color:'var(--text)', flex:1}}>{kid.name}</div>
               {totalPts>0 && <div style={{fontWeight:900, fontSize:14, color:'#dc2626'}}>-{totalPts} P</div>}
             </div>
+
+            {/* Standard penalty toggles */}
             <div style={{display:'flex', flexDirection:'column', gap:8}}>
-              {penaltyDefs.map(p => {
+              {standardDefs.map(p => {
                 const isActive = state.penalties?.[kid.id]?.[p.id] === week+'_confirmed';
                 return (
                   <div key={p.id} onClick={()=>togglePenalty(kid.id, p.id)} style={{
@@ -340,6 +372,58 @@ function PenaltyManager({ state, setState }) {
                   </div>
                 );
               })}
+            </div>
+
+            {/* Custom (manual) penalties already added for this kid */}
+            {customDefs.length > 0 && (
+              <div style={{display:'flex', flexDirection:'column', gap:8, marginTop:8}}>
+                {customDefs.map(p => (
+                  <div key={p.id} style={{
+                    display:'flex', alignItems:'center', gap:12, padding:'12px 14px',
+                    borderRadius:16, background:'#fee2e2', border:'1.5px solid #fca5a5',
+                  }}>
+                    <span style={{fontSize:20}}>⚡</span>
+                    <div style={{flex:1}}>
+                      <div style={{fontWeight:700, fontSize:13, color:'#7f1d1d'}}>{p.label}</div>
+                      <div style={{fontWeight:600, fontSize:11, color:'#dc2626'}}>-{p.pts} Punkte (manuell)</div>
+                    </div>
+                    <button onClick={()=>removeCustomPenalty(kid.id, p.id)} style={{
+                      background:'#dc2626', border:'none', borderRadius:'50%', width:26, height:26,
+                      color:'#fff', fontSize:14, fontWeight:900, cursor:'pointer', flexShrink:0,
+                      display:'flex', alignItems:'center', justifyContent:'center',
+                    }}>✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Form to add a manual penalty */}
+            <div style={{marginTop:10, padding:'12px 14px', background:'#fff7ed',
+              borderRadius:16, border:'1.5px dashed #fb923c'}}>
+              <div style={{fontWeight:800, fontSize:12, color:'#9a3412', marginBottom:8}}>⚡ Eigene Strafe hinzufügen</div>
+              <input
+                placeholder="Beschreibung der Strafe..."
+                value={customLabel[kid.id] || ''}
+                onChange={e => setCustomLabel(prev => ({ ...prev, [kid.id]: e.target.value }))}
+                onKeyDown={e => e.key==='Enter' && addCustomPenalty(kid.id)}
+                style={{width:'100%', boxSizing:'border-box', padding:'9px 12px', borderRadius:10,
+                  border:'1.5px solid #fed7aa', fontFamily:'Nunito', fontSize:13, fontWeight:600,
+                  outline:'none', background:'#fff', color:'var(--text)', marginBottom:8}}
+              />
+              <div style={{display:'flex', gap:8}}>
+                <input
+                  type="number" min="1" placeholder="Punkte"
+                  value={customPts[kid.id] || ''}
+                  onChange={e => setCustomPts(prev => ({ ...prev, [kid.id]: e.target.value }))}
+                  onKeyDown={e => e.key==='Enter' && addCustomPenalty(kid.id)}
+                  style={{width:90, padding:'9px 12px', borderRadius:10, border:'1.5px solid #fed7aa',
+                    fontFamily:'Nunito', fontSize:13, fontWeight:700, outline:'none', background:'#fff', color:'var(--text)'}}
+                />
+                <button onClick={() => addCustomPenalty(kid.id)} style={{
+                  flex:1, padding:'9px 0', borderRadius:10, border:'none', background:'#dc2626',
+                  color:'#fff', fontFamily:'Nunito', fontWeight:800, fontSize:13, cursor:'pointer',
+                }}>Hinzufügen</button>
+              </div>
             </div>
           </div>
         );
