@@ -1012,7 +1012,7 @@ function LoginScreen({ onLogin }) {
     e && e.preventDefault();
     if(val === getAppPassword()) {
       sessionStorage.setItem(APP_PW_KEY, '1');
-      window.location.reload();
+      onLogin();
     } else {
       setError(true);
       setVal('');
@@ -1110,11 +1110,9 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if(!loggedIn) return;
-    // Timeout: falls Firebase nach 8s nicht antwortet → localStorage Fallback
+    // Firebase immer starten — unabhängig vom Login-Status
     const timeout = setTimeout(() => {
-      if (!loading) return;
-      try { const r = localStorage.getItem('habits_v3'); if(r) { const s=JSON.parse(r); if(!s.tasks) s.tasks=TASKS_DEF; setStateRaw(s); } else { setStateRaw(defaultState()); } } catch(e) { setStateRaw(defaultState()); }
+      setStateRaw(s => s || defaultState());
       setLoading(false);
     }, 8000);
 
@@ -1144,8 +1142,7 @@ function App() {
         setLoading(false);
       }, err => {
         clearTimeout(timeout);
-        console.error('Firebase Fehler:', err);
-        try { const r = localStorage.getItem('habits_v3'); if(r) { const s=JSON.parse(r); if(!s.tasks) s.tasks=TASKS_DEF; setStateRaw(s); } else { setStateRaw(defaultState()); } } catch(e) { setStateRaw(defaultState()); }
+        setStateRaw(defaultState());
         setLoading(false);
       });
     } catch(e) {
