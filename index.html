@@ -1027,12 +1027,25 @@ function LeaderboardScreen({ state }) {
             {k.penaltyPts>0 && <div style={{fontSize:11, fontWeight:700, color:'#dc2626', marginTop:2}}>⚡ -{k.penaltyPts} Strafe</div>}
 
             {prizes[i] && Number(prizes[i])>0 && (
-              <div style={{marginTop:12, background:'var(--gold-light)', border:'1.5px solid var(--gold)',
-                borderRadius:12, padding:'8px 10px'}}>
-                <div style={{fontSize:11, fontWeight:700, color:'var(--text-3)'}}>Preis</div>
-                <div style={{fontSize:20, fontWeight:900, color:'var(--gold)'}}>€ {prizes[i]}</div>
-                <div style={{fontSize:10, fontWeight:700, color:'var(--text-3)'}}>Taschengeld</div>
-              </div>
+              maxPts>0 && k.pts>=maxPts*0.8 ? (
+                <div style={{marginTop:12, background:'var(--gold-light)', border:'1.5px solid var(--gold)',
+                  borderRadius:12, padding:'8px 10px'}}>
+                  <div style={{fontSize:11, fontWeight:700, color:'var(--text-3)'}}>Preis 🎉</div>
+                  <div style={{fontSize:20, fontWeight:900, color:'var(--gold)'}}>€ {prizes[i]}</div>
+                  <div style={{fontSize:10, fontWeight:700, color:'var(--text-3)'}}>Taschengeld verdient!</div>
+                </div>
+              ) : (
+                <div style={{marginTop:12, background:'#fff7ed', border:'1.5px solid #fb923c',
+                  borderRadius:12, padding:'8px 10px'}}>
+                  <div style={{fontSize:10, fontWeight:700, color:'#9a3412'}}>Taschengeld (€{prizes[i]})</div>
+                  <div style={{fontSize:14, fontWeight:900, color:'#ea580c'}}>
+                    noch {Math.max(0, Math.ceil(maxPts*0.8)-k.pts)} Pkt.
+                  </div>
+                  <div style={{fontSize:9, fontWeight:600, color:'#c2410c'}}>
+                    Ziel: 80% = {Math.ceil(maxPts*0.8)} Pkt.
+                  </div>
+                </div>
+              )
             )}
 
             <div style={{marginTop:10, background:'var(--bg)', borderRadius:8, height:7, overflow:'hidden'}}>
