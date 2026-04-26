@@ -1233,7 +1233,24 @@ function App() {
   );
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+class ErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(e) { return { error: e }; }
+  render() {
+    if (this.state.error) return (
+      <div style={{padding:24, fontFamily:'Nunito', background:'#fff5f5', minHeight:'100vh'}}>
+        <div style={{fontSize:32, marginBottom:12}}>⚠️</div>
+        <div style={{fontWeight:900, fontSize:18, color:'#dc2626', marginBottom:8}}>App-Fehler</div>
+        <pre style={{fontSize:12, color:'#7f1d1d', whiteSpace:'pre-wrap', background:'#fef2f2', padding:12, borderRadius:8}}>
+          {this.state.error.toString()}
+        </pre>
+      </div>
+    );
+    return this.props.children;
+  }
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<ErrorBoundary><App/></ErrorBoundary>);
 </script>
 </body>
 </html>
