@@ -89,6 +89,15 @@ const TASKS_DEF = [
   { id:'laundry', icon:'👕', label:'Wäsche aushängen',          pts:10 },
 ];
 const MAX_PTS = TASKS_DEF.reduce((s,t) => s+t.pts, 0);
+
+const PENALTIES_DEF = [
+  { id:'p_bed',      icon:'🛌', label:'Bett nicht gemacht',              pts:5  },
+  { id:'p_table',    icon:'🍽️', label:'Tisch nicht aufgeräumt',          pts:5  },
+  { id:'p_homework', icon:'📚', label:'Hausaufgaben vergessen',           pts:10 },
+  { id:'p_phone',    icon:'📱', label:'Handy beim Essen',                 pts:5  },
+  { id:'p_light',    icon:'💡', label:'Licht angelassen',                 pts:3  },
+  { id:'p_clothes',  icon:'👔', label:'Schmutzige Wäsche nicht im Korb', pts:3  },
+];
 const KIDS = [
   { id:'daniil',   name:'Daniil',   emoji:'🏆', color:'var(--d-color)', light:'var(--d-light)', mid:'var(--d-mid)' },
   { id:'viktoria', name:'Viktoria', emoji:'⭐', color:'var(--v-color)', light:'var(--v-light)', mid:'var(--v-mid)' },
@@ -106,8 +115,10 @@ function defaultState() {
   return {
     weekKey: getWeekKey(),
     completions: { daniil:{}, viktoria:{} },
+    penalties:   { daniil:{}, viktoria:{} },
     settings: { pin:'1234', prize1:'5', prize2:'2' },
     tasks: TASKS_DEF,
+    penaltyDefs: PENALTIES_DEF,
   };
 }
 function saveState(s) {
@@ -117,11 +128,20 @@ function saveState(s) {
 function getKidPts(completions, kidId, weekKey, tasks) {
   return tasks.filter(t => completions[kidId]?.[t.id] === weekKey+'_confirmed').reduce((s,t)=>s+t.pts,0);
 }
+function getKidPenaltyPts(penalties, kidId, weekKey, penaltyDefs) {
+  return (penaltyDefs||[]).filter(p => penalties?.[kidId]?.[p.id] === weekKey+'_confirmed').reduce((s,p)=>s+p.pts,0);
+}
+function getKidNetPts(completions, penalties, kidId, weekKey, tasks, penaltyDefs) {
+  return Math.max(0, getKidPts(completions, kidId, weekKey, tasks) - getKidPenaltyPts(penalties, kidId, weekKey, penaltyDefs));
+}
 function getKidPending(completions, kidId, weekKey, tasks) {
   return tasks.filter(t => completions[kidId]?.[t.id] === weekKey+'_pending');
 }
 function getKidConfirmed(completions, kidId, weekKey, tasks) {
   return tasks.filter(t => completions[kidId]?.[t.id] === weekKey+'_confirmed');
+}
+function getKidActivePenalties(penalties, kidId, weekKey, penaltyDefs) {
+  return (penaltyDefs||[]).filter(p => penalties?.[kidId]?.[p.id] === weekKey+'_confirmed');
 }
 
 // ── Confetti ──────────────────────────────────────────────────
@@ -261,6 +281,69 @@ function AppPasswordChanger() {
         background: saved ? 'var(--green)' : 'var(--d-color)', color:'#fff',
         fontFamily:'Nunito', fontWeight:800, fontSize:14, cursor:'pointer', transition:'background 0.2s',
       }}>{saved ? '✓' : 'Speichern'}</button>
+    </div>
+  );
+}
+
+// ── Penalty Manager ───────────────────────────────────────────
+function PenaltyManager({ state, setState }) {
+  const week = state.weekKey;
+  const penaltyDefs = state.penaltyDefs || PENALTIES_DEF;
+
+  const togglePenalty = (kidId, penaltyId) => {
+    setState(prev => {
+      const cur = prev.penalties?.[kidId]?.[penaltyId];
+      const kidPenalties = { ...(prev.penalties?.[kidId] || {}) };
+      if (cur === week+'_confirmed') { delete kidPenalties[penaltyId]; }
+      else { kidPenalties[penaltyId] = week+'_confirmed'; }
+      const next = { ...prev, penalties: { ...(prev.penalties||{}), [kidId]: kidPenalties } };
+      saveState(next); return next;
+    });
+  };
+
+  return (
+    <div>
+      {KIDS.map(kid => {
+        const active = getKidActivePenalties(state.penalties, kid.id, week, penaltyDefs);
+        const totalPts = active.reduce((s,p)=>s+p.pts,0);
+        return (
+          <div key={kid.id} style={{marginBottom:20}}>
+            <div style={{display:'flex', alignItems:'center', gap:10, marginBottom:12}}>
+              <div style={{width:36, height:36, borderRadius:'50%', background:kid.color,
+                display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, color:'#fff'}}>{kid.emoji}</div>
+              <div style={{fontWeight:800, fontSize:15, color:'var(--text)', flex:1}}>{kid.name}</div>
+              {totalPts>0 && <div style={{fontWeight:900, fontSize:14, color:'#dc2626'}}>-{totalPts} P</div>}
+            </div>
+            <div style={{display:'flex', flexDirection:'column', gap:8}}>
+              {penaltyDefs.map(p => {
+                const isActive = state.penalties?.[kid.id]?.[p.id] === week+'_confirmed';
+                return (
+                  <div key={p.id} onClick={()=>togglePenalty(kid.id, p.id)} style={{
+                    display:'flex', alignItems:'center', gap:12, padding:'12px 14px',
+                    borderRadius:16, cursor:'pointer', transition:'all 0.2s',
+                    background: isActive ? '#fee2e2' : '#fff',
+                    border: `1.5px solid ${isActive ? '#fca5a5' : 'var(--border)'}`,
+                  }}>
+                    <span style={{fontSize:20}}>{p.icon}</span>
+                    <div style={{flex:1}}>
+                      <div style={{fontWeight:700, fontSize:13, color: isActive?'#7f1d1d':'var(--text)'}}>{p.label}</div>
+                      <div style={{fontWeight:600, fontSize:11, color:'#dc2626'}}>-{p.pts} Punkte</div>
+                    </div>
+                    <div style={{
+                      width:26, height:26, borderRadius:'50%', flexShrink:0,
+                      background: isActive ? '#dc2626' : 'var(--bg)',
+                      border: `2px solid ${isActive ? '#dc2626' : 'var(--border)'}`,
+                      display:'flex', alignItems:'center', justifyContent:'center',
+                    }}>
+                      {isActive && <span style={{color:'#fff', fontSize:13, fontWeight:900}}>✓</span>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -427,7 +510,7 @@ function ParentScreen({ state, setState, onClose }) {
 
       {/* Sub Tabs */}
       <div style={{background:'#fff', padding:'0 20px 12px', display:'flex', gap:8, borderBottom:'1px solid var(--border)'}}>
-        {[{id:'pending',label:`⏳ Ausstehend (${allPending.length})`},{id:'tasks',label:'📋 Aufgaben'},{id:'settings',label:'⚙️ Einstellungen'}].map(t=>(
+        {[{id:'pending',label:`⏳ Ausstehend (${allPending.length})`},{id:'penalties',label:'⚡ Strafen'},{id:'tasks',label:'📋 Aufgaben'},{id:'settings',label:'⚙️ Einstellungen'}].map(t=>(
           <button key={t.id} onClick={()=>setTab(t.id)} style={{
             padding:'8px 16px', borderRadius:20, border:'none', fontFamily:'Nunito', fontWeight:700, fontSize:12, cursor:'pointer',
             background: tab===t.id ? 'var(--d-color)' : 'var(--bg)',
@@ -520,6 +603,16 @@ function ParentScreen({ state, setState, onClose }) {
           </div>
         )}
 
+        {tab==='penalties' && (
+          <div>
+            <div style={{fontWeight:800, fontSize:14, color:'#dc2626', marginBottom:6}}>⚡ Strafpunkte vergeben</div>
+            <div style={{fontWeight:600, fontSize:12, color:'var(--text-3)', marginBottom:16}}>
+              Antippen um Strafe zu aktivieren / deaktivieren
+            </div>
+            <PenaltyManager state={state} setState={setState}/>
+          </div>
+        )}
+
         {tab==='tasks' && (
           <div>
             <div style={{fontWeight:800, fontSize:14, color:'var(--text)', marginBottom:12}}>📋 Aufgaben verwalten</div>
@@ -585,7 +678,7 @@ function ParentScreen({ state, setState, onClose }) {
               <button onClick={()=>{
                 if(window.confirm('Wirklich alle Aufgaben dieser Woche zurücksetzen?')) {
                   setState(prev=>{
-                    const next={...prev, completions:{daniil:{},viktoria:{}}};
+                    const next={...prev, completions:{daniil:{},viktoria:{}}, penalties:{daniil:{},viktoria:{}}};
                     saveState(next); return next;
                   });
                 }
@@ -666,10 +759,13 @@ function TaskCard({ task, status, color, light, mid, onToggle, idx }) {
 function HomeScreen({ state, activeKid, setActiveKid }) {
   const week = state.weekKey;
   const tasks = state.tasks;
+  const penaltyDefs = state.penaltyDefs || PENALTIES_DEF;
   const maxPts = tasks.reduce((s,t)=>s+t.pts,0);
   const scores = KIDS.map(k => ({
     ...k,
-    pts: getKidPts(state.completions, k.id, week, tasks),
+    pts: getKidNetPts(state.completions, state.penalties, k.id, week, tasks, penaltyDefs),
+    rawPts: getKidPts(state.completions, k.id, week, tasks),
+    penaltyPts: getKidPenaltyPts(state.penalties, k.id, week, penaltyDefs),
     confirmed: getKidConfirmed(state.completions, k.id, week, tasks).length,
     pending: getKidPending(state.completions, k.id, week, tasks).length,
   }));
@@ -700,6 +796,12 @@ function HomeScreen({ state, activeKid, setActiveKid }) {
               <div style={{marginTop:8, background:'rgba(255,255,255,0.2)', borderRadius:10, padding:'5px 10px',
                 fontSize:12, fontWeight:700, display:'inline-block'}}>
                 ⏳ {ak.pending} warten auf Bestätigung
+              </div>
+            )}
+            {(ak?.penaltyPts||0)>0 && (
+              <div style={{marginTop:6, background:'rgba(255,0,0,0.2)', borderRadius:10, padding:'5px 10px',
+                fontSize:12, fontWeight:700, display:'inline-block'}}>
+                ⚡ -{ak.penaltyPts} Strafpunkte
               </div>
             )}
           </div>
@@ -783,6 +885,7 @@ function TasksScreen({ state, setState, activeKid }) {
   const kid = KIDS.find(k=>k.id===activeKid);
   const week = state.weekKey;
   const tasks = state.tasks;
+  const penaltyDefs = state.penaltyDefs || PENALTIES_DEF;
 
   const toggle = useCallback((taskId) => {
     setState(prev => {
@@ -795,7 +898,9 @@ function TasksScreen({ state, setState, activeKid }) {
     });
   }, [activeKid, week, setState]);
 
-  const pts = getKidPts(state.completions, activeKid, week, tasks);
+  const pts = getKidNetPts(state.completions, state.penalties, activeKid, week, tasks, penaltyDefs);
+  const penaltyPts = getKidPenaltyPts(state.penalties, activeKid, week, penaltyDefs);
+  const activePenalties = getKidActivePenalties(state.penalties, activeKid, week, penaltyDefs);
   const confirmed = getKidConfirmed(state.completions, activeKid, week, tasks).length;
   const pending = getKidPending(state.completions, activeKid, week, tasks).length;
 
@@ -834,6 +939,32 @@ function TasksScreen({ state, setState, activeKid }) {
         );
       })}
 
+      {activePenalties.length > 0 && (
+        <div style={{marginTop:8, marginBottom:12}}>
+          <div style={{fontWeight:800, fontSize:14, color:'#dc2626', marginBottom:10}}>⚡ Strafpunkte diese Woche</div>
+          {activePenalties.map((p,i) => (
+            <div key={p.id} style={{
+              display:'flex', alignItems:'center', gap:14,
+              background:'#fff5f5', border:'1.5px solid #fecaca',
+              borderRadius:18, padding:'12px 16px', marginBottom:8,
+              animation:`fadeUp 0.3s ${i*0.05}s ease both`,
+            }}>
+              <div style={{fontSize:24, width:40, height:40, display:'flex', alignItems:'center', justifyContent:'center',
+                background:'#fee2e2', borderRadius:12}}>{p.icon}</div>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:700, fontSize:14, color:'#7f1d1d'}}>{p.label}</div>
+                <div style={{fontWeight:700, fontSize:12, color:'#dc2626', marginTop:2}}>-{p.pts} Punkte</div>
+              </div>
+            </div>
+          ))}
+          <div style={{background:'#fee2e2', borderRadius:14, padding:'10px 16px',
+            display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+            <span style={{fontWeight:700, fontSize:13, color:'#7f1d1d'}}>Gesamt Strafpunkte</span>
+            <span style={{fontWeight:900, fontSize:18, color:'#dc2626'}}>-{penaltyPts}</span>
+          </div>
+        </div>
+      )}
+
       {confirmed===tasks.length && tasks.length > 0 && (
         <div style={{textAlign:'center', padding:'20px', marginTop:8,
           background:'var(--green-light)', borderRadius:20, border:'1.5px solid var(--green)', animation:'pop 0.4s ease'}}>
@@ -850,10 +981,12 @@ function TasksScreen({ state, setState, activeKid }) {
 function LeaderboardScreen({ state }) {
   const week = state.weekKey;
   const tasks = state.tasks;
+  const penaltyDefs = state.penaltyDefs || PENALTIES_DEF;
   const maxPts = tasks.reduce((s,t)=>s+t.pts,0);
   const scores = KIDS.map(k=>({
     ...k,
-    pts: getKidPts(state.completions, k.id, week, tasks),
+    pts: getKidNetPts(state.completions, state.penalties, k.id, week, tasks, penaltyDefs),
+    penaltyPts: getKidPenaltyPts(state.penalties, k.id, week, penaltyDefs),
     confirmed: getKidConfirmed(state.completions, k.id, week, tasks).length,
     pending: getKidPending(state.completions, k.id, week, tasks).length,
   })).sort((a,b)=>b.pts-a.pts);
@@ -891,6 +1024,7 @@ function LeaderboardScreen({ state }) {
             <div style={{fontWeight:900, fontSize:30, color:k.color, lineHeight:1.1, marginTop:6}}>{k.pts}</div>
             <div style={{fontWeight:600, fontSize:12, color:'var(--text-3)'}}>Punkte</div>
             {k.pending>0 && <div style={{fontSize:11, fontWeight:700, color:'var(--orange)', marginTop:4}}>+{k.pending} ausstehend</div>}
+            {k.penaltyPts>0 && <div style={{fontSize:11, fontWeight:700, color:'#dc2626', marginTop:2}}>⚡ -{k.penaltyPts} Strafe</div>}
 
             {prizes[i] && Number(prizes[i])>0 && (
               <div style={{marginTop:12, background:'var(--gold-light)', border:'1.5px solid var(--gold)',
@@ -1131,14 +1265,19 @@ function App() {
           const data = {
             ...raw,
             tasks: raw.tasks || TASKS_DEF,
+            penaltyDefs: raw.penaltyDefs || PENALTIES_DEF,
             settings: raw.settings || { pin:'1234', prize1:'5', prize2:'2' },
             completions: {
               daniil:  (raw.completions && raw.completions.daniil)  || {},
               viktoria:(raw.completions && raw.completions.viktoria) || {},
             },
+            penalties: {
+              daniil:  (raw.penalties && raw.penalties.daniil)  || {},
+              viktoria:(raw.penalties && raw.penalties.viktoria) || {},
+            },
           };
           if (data.weekKey !== cur) {
-            const reset = { ...data, weekKey: cur, completions: {daniil:{}, viktoria:{}} };
+            const reset = { ...data, weekKey: cur, completions: {daniil:{}, viktoria:{}}, penalties: {daniil:{}, viktoria:{}} };
             fbRef.set(reset);
             setStateRaw(reset);
           } else {
