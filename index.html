@@ -116,7 +116,7 @@ function defaultState() {
     weekKey: getWeekKey(),
     completions: { daniil:{}, viktoria:{} },
     penalties:   { daniil:{}, viktoria:{} },
-    settings: { pin:'1234', prize1:'5', prize2:'2' },
+    settings: { pin:'1234', prize1:'5', prize2:'2', bonus:'10' },
     tasks: TASKS_DEF,
     penaltyDefs: PENALTIES_DEF,
   };
@@ -709,7 +709,7 @@ function ParentScreen({ state, setState, onClose }) {
             <div style={{fontWeight:800, fontSize:14, color:'var(--text)', marginBottom:12}}>💶 Wochenpreis (Taschengeld)</div>
             <div style={{background:'#fff', borderRadius:20, padding:'18px', boxShadow:'var(--shadow)', marginBottom:20}}>
               {[{key:'prize1', label:'🥇 1. Platz', color:'var(--gold)'},{key:'prize2', label:'🥈 2. Platz', color:'var(--text-3)'}].map(item=>(
-                <div key={item.key} style={{display:'flex', alignItems:'center', gap:14, marginBottom: item.key==='prize1'?16:0}}>
+                <div key={item.key} style={{display:'flex', alignItems:'center', gap:14, marginBottom:16}}>
                   <div style={{fontWeight:800, fontSize:16, flex:1, color:item.color}}>{item.label}</div>
                   <div style={{display:'flex', alignItems:'center', gap:8, background:'var(--bg)', borderRadius:14, padding:'8px 14px'}}>
                     <span style={{fontWeight:700, fontSize:15, color:'var(--text-2)'}}>€</span>
@@ -726,6 +726,25 @@ function ParentScreen({ state, setState, onClose }) {
                   </div>
                 </div>
               ))}
+              <div style={{display:'flex', alignItems:'center', gap:14, paddingTop:12, borderTop:'1px solid var(--border)'}}>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:800, fontSize:16, color:'#7c3aed'}}>🏅 Platz-1-Bonus</div>
+                  <div style={{fontWeight:600, fontSize:11, color:'var(--text-3)', marginTop:2}}>Extra für den klaren Sieger</div>
+                </div>
+                <div style={{display:'flex', alignItems:'center', gap:8, background:'var(--bg)', borderRadius:14, padding:'8px 14px'}}>
+                  <span style={{fontWeight:700, fontSize:15, color:'var(--text-2)'}}>€</span>
+                  <input
+                    type="number" min="0" step="0.5"
+                    value={state.settings.bonus ?? '10'}
+                    onChange={e=>updatePrize('bonus', e.target.value)}
+                    style={{
+                      width:60, border:'none', background:'transparent',
+                      fontFamily:'Nunito', fontWeight:900, fontSize:20, color:'#7c3aed',
+                      textAlign:'center', outline:'none',
+                    }}
+                  />
+                </div>
+              </div>
             </div>
 
             <div style={{fontWeight:800, fontSize:14, color:'var(--text)', marginBottom:12}}>🔑 PIN ändern</div>
@@ -1075,8 +1094,9 @@ function LeaderboardScreen({ state }) {
     pending: getKidPending(state.completions, k.id, week, tasks).length,
   })).sort((a,b)=>b.pts-a.pts);
   const isEqual = scores[0].pts===scores[1].pts;
-  const { prize1, prize2 } = state.settings;
+  const { prize1, prize2, bonus } = state.settings;
   const prizes = [prize1, prize2];
+  const bonusAmt = Number(bonus) || 0;
 
   const [, m, d] = week.split('-');
 
@@ -1115,13 +1135,20 @@ function LeaderboardScreen({ state }) {
                 <div style={{marginTop:12, background:'var(--gold-light)', border:'1.5px solid var(--gold)',
                   borderRadius:12, padding:'8px 10px'}}>
                   <div style={{fontSize:11, fontWeight:700, color:'var(--text-3)'}}>Preis 🎉</div>
-                  <div style={{fontSize:20, fontWeight:900, color:'var(--gold)'}}>€ {prizes[i]}</div>
+                  <div style={{fontSize:20, fontWeight:900, color:'var(--gold)'}}>
+                    € {i===0&&!isEqual&&bonusAmt>0 ? Number(prizes[i])+bonusAmt : prizes[i]}
+                  </div>
+                  {i===0&&!isEqual&&bonusAmt>0 && (
+                    <div style={{fontSize:10, fontWeight:700, color:'#7c3aed'}}>
+                      inkl. €{bonusAmt} Platz-1-Bonus 🏅
+                    </div>
+                  )}
                   <div style={{fontSize:10, fontWeight:700, color:'var(--text-3)'}}>Taschengeld verdient!</div>
                 </div>
               ) : (
                 <div style={{marginTop:12, background:'#fff7ed', border:'1.5px solid #fb923c',
                   borderRadius:12, padding:'8px 10px'}}>
-                  <div style={{fontSize:10, fontWeight:700, color:'#9a3412'}}>Taschengeld (€{prizes[i]})</div>
+                  <div style={{fontSize:10, fontWeight:700, color:'#9a3412'}}>Taschengeld (€{prizes[i]}{i===0&&!isEqual&&bonusAmt>0?` + €${bonusAmt} Bonus`:''})</div>
                   <div style={{fontSize:14, fontWeight:900, color:'#ea580c'}}>
                     noch {Math.max(0, Math.ceil(maxPts*0.8)-k.pts)} Pkt.
                   </div>
@@ -1363,7 +1390,7 @@ function App() {
             ...raw,
             tasks: raw.tasks || TASKS_DEF,
             penaltyDefs: raw.penaltyDefs || PENALTIES_DEF,
-            settings: raw.settings || { pin:'1234', prize1:'5', prize2:'2' },
+            settings: { pin:'1234', prize1:'5', prize2:'2', bonus:'10', ...(raw.settings||{}) },
             completions: {
               daniil:  (raw.completions && raw.completions.daniil)  || {},
               viktoria:(raw.completions && raw.completions.viktoria) || {},
