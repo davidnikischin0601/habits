@@ -1,0 +1,1241 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#F8F7F4">
+<title>Haushalts-Punkte</title>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<script>
+// ▼▼▼ HIER deine Firebase-Config einfügen ▼▼▼
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyBfxizmewryNM-iNs_yguYNWwS4dD2vdI8",
+  authDomain: "habits-168b8.firebaseapp.com",
+  databaseURL: "https://habits-168b8-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "habits-168b8",
+  storageBucket: "habits-168b8.firebasestorage.app",
+  messagingSenderId: "1055971901125",
+  appId: "1:1055971901125:web:dd832e6e7ce80f690b3aac",
+  measurementId: "G-PS6D8J130W"
+};
+// ▲▲▲ Ende Config ▲▲▲
+firebase.initializeApp(FIREBASE_CONFIG);
+const fbDb = firebase.database();
+const fbRef = fbDb.ref('habits');
+</script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color: transparent; }
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  font-family: 'Nunito', sans-serif;
+}
+body {
+  background: #F8F7F4;
+}
+:root {
+  --bg: #F8F7F4;
+  --d-color: oklch(65% 0.18 265);
+  --d-light: oklch(95% 0.05 265);
+  --d-mid: oklch(88% 0.09 265);
+  --v-color: oklch(65% 0.18 340);
+  --v-light: oklch(95% 0.05 340);
+  --v-mid: oklch(88% 0.09 340);
+  --gold: oklch(72% 0.16 85);
+  --gold-light: oklch(96% 0.05 85);
+  --green: oklch(68% 0.15 145);
+  --green-light: oklch(96% 0.05 145);
+  --orange: oklch(72% 0.16 55);
+  --orange-light: oklch(96% 0.05 55);
+  --text: #1C1B1A;
+  --text-2: #6B6866;
+  --text-3: #9E9C9A;
+  --border: #EEECEA;
+  --shadow: 0 2px 16px rgba(0,0,0,0.07);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,0.12);
+}
+@keyframes pop { 0%{transform:scale(0.85);opacity:0} 60%{transform:scale(1.06)} 100%{transform:scale(1);opacity:1} }
+@keyframes fadeUp { from{transform:translateY(16px);opacity:0} to{transform:translateY(0);opacity:1} }
+@keyframes slideUp { from{transform:translateY(100%)} to{transform:translateY(0)} }
+@keyframes confettiFall { 0%{transform:translateY(-10px) rotate(0deg);opacity:1} 100%{transform:translateY(130px) rotate(720deg);opacity:0} }
+@keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.05)} }
+@keyframes starFloat { 0%{transform:translateY(0) scale(1);opacity:1} 100%{transform:translateY(-55px) scale(0.4);opacity:0} }
+@keyframes checkPop { 0%{transform:scale(0)} 60%{transform:scale(1.25)} 100%{transform:scale(1)} }
+@keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-8px)} 75%{transform:translateX(8px)} }
+@keyframes pendingPulse { 0%,100%{opacity:1} 50%{opacity:0.55} }
+@keyframes spin { to{transform:rotate(360deg)} }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback } = React;
+
+// ── Data ──────────────────────────────────────────────────────
+const TASKS_DEF = [
+  { id:'dish',    icon:'🍽️', label:'Geschirrspüler ausräumen', pts:5  },
+  { id:'room',    icon:'🛏️', label:'Zimmer aufräumen',          pts:10 },
+  { id:'trash',   icon:'🗑️', label:'Müll rausbringen',          pts:8  },
+  { id:'lawn',    icon:'🌿', label:'Rasen mähen',               pts:20 },
+  { id:'vacuum',  icon:'🧹', label:'Staubsaugen',               pts:15 },
+  { id:'laundry', icon:'👕', label:'Wäsche aushängen',          pts:10 },
+];
+const MAX_PTS = TASKS_DEF.reduce((s,t) => s+t.pts, 0);
+const KIDS = [
+  { id:'daniil',   name:'Daniil',   emoji:'🏆', color:'var(--d-color)', light:'var(--d-light)', mid:'var(--d-mid)' },
+  { id:'viktoria', name:'Viktoria', emoji:'⭐', color:'var(--v-color)', light:'var(--v-light)', mid:'var(--v-mid)' },
+];
+
+function getWeekKey() {
+  const d = new Date();
+  const day = d.getDay();
+  const diff = d.getDate() - day + (day===0 ? -6 : 1);
+  const mon = new Date(d); mon.setDate(diff);
+  return `${mon.getFullYear()}-${String(mon.getMonth()+1).padStart(2,'0')}-${String(mon.getDate()).padStart(2,'0')}`;
+}
+
+function defaultState() {
+  return {
+    weekKey: getWeekKey(),
+    completions: { daniil:{}, viktoria:{} },
+    settings: { pin:'1234', prize1:'5', prize2:'2' },
+    tasks: TASKS_DEF,
+  };
+}
+function saveState(s) {
+  fbRef.set(s);
+}
+
+function getKidPts(completions, kidId, weekKey, tasks) {
+  return tasks.filter(t => completions[kidId]?.[t.id] === weekKey+'_confirmed').reduce((s,t)=>s+t.pts,0);
+}
+function getKidPending(completions, kidId, weekKey, tasks) {
+  return tasks.filter(t => completions[kidId]?.[t.id] === weekKey+'_pending');
+}
+function getKidConfirmed(completions, kidId, weekKey, tasks) {
+  return tasks.filter(t => completions[kidId]?.[t.id] === weekKey+'_confirmed');
+}
+
+// ── Confetti ──────────────────────────────────────────────────
+function Confetti({ x, y, color, onDone }) {
+  const pieces = ['★','●','■','◆','▲','✦'];
+  const colors = [color, '#FFD700', '#FF9EBC', '#A0D9FF', '#C4F0C5', '#FFC49B'];
+  useEffect(() => { const t = setTimeout(onDone, 1100); return ()=>clearTimeout(t); }, []);
+  return (
+    <div style={{position:'fixed', left:x, top:y, pointerEvents:'none', zIndex:9999}}>
+      {Array.from({length:16}).map((_,i) => (
+        <span key={i} style={{
+          position:'absolute', fontSize:10+Math.random()*10,
+          color: colors[i%colors.length],
+          left:(Math.random()-0.5)*100, top:0,
+          animation:`confettiFall ${0.65+Math.random()*0.5}s ease-out forwards`,
+          animationDelay:`${Math.random()*0.25}s`,
+        }}>{pieces[i%pieces.length]}</span>
+      ))}
+    </div>
+  );
+}
+
+function FloatingPts({ pts, color }) {
+  return (
+    <div style={{
+      position:'absolute', top:-10, right:10, zIndex:100,
+      fontFamily:'Nunito', fontWeight:900, fontSize:17, color,
+      animation:'starFloat 0.9s ease-out forwards', pointerEvents:'none',
+    }}>+{pts}✨</div>
+  );
+}
+
+// ── Ring ──────────────────────────────────────────────────────
+function Ring({ pct, size=64, stroke=7, label }) {
+  const r=(size-stroke)/2, circ=2*Math.PI*r, dash=circ*Math.min(pct,1);
+  return (
+    <svg width={size} height={size} style={{transform:'rotate(-90deg)'}}>
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="rgba(255,255,255,0.25)" strokeWidth={stroke}/>
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="rgba(255,255,255,0.9)" strokeWidth={stroke}
+        strokeDasharray={`${dash} ${circ}`} strokeLinecap="round"
+        style={{transition:'stroke-dasharray 0.6s ease'}}/>
+      <foreignObject x={0} y={0} width={size} height={size}>
+        <div xmlns="http://www.w3.org/1999/xhtml"
+          style={{width:size, height:size, display:'flex', alignItems:'center', justifyContent:'center',
+            transform:'rotate(90deg)', fontSize:11, fontWeight:800, color:'#fff', fontFamily:'Nunito'}}>
+          {label}
+        </div>
+      </foreignObject>
+    </svg>
+  );
+}
+
+// ── PIN Modal ─────────────────────────────────────────────────
+function PinModal({ onSuccess, onCancel, correctPin }) {
+  const [val, setVal] = useState('');
+  const [error, setError] = useState(false);
+  const digits = ['1','2','3','4','5','6','7','8','9','','0','⌫'];
+
+  const press = (d) => {
+    if(d==='') return;
+    if(d==='⌫') { setVal(v=>v.slice(0,-1)); return; }
+    const next = val + d;
+    if(next.length <= 4) {
+      setVal(next);
+      if(next.length===4) {
+        if(next === correctPin) { setTimeout(()=>onSuccess(), 150); }
+        else { setError(true); setTimeout(()=>{ setVal(''); setError(false); }, 700); }
+      }
+    }
+  };
+
+  return (
+    <div style={{
+      position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:500,
+      display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'flex-end',
+    }} onClick={onCancel}>
+      <div onClick={e=>e.stopPropagation()} style={{
+        background:'#fff', borderRadius:'28px 28px 0 0', padding:'28px 24px 40px',
+        width:'100%', maxWidth:480, animation:'slideUp 0.3s ease',
+        paddingBottom:'max(40px, env(safe-area-inset-bottom, 40px))',
+      }}>
+        <div style={{textAlign:'center', marginBottom:24}}>
+          <div style={{fontSize:28, marginBottom:8}}>🔒</div>
+          <div style={{fontWeight:900, fontSize:18, color:'var(--text)'}}>Eltern-Modus</div>
+          <div style={{fontWeight:600, fontSize:13, color:'var(--text-3)', marginTop:4}}>PIN eingeben</div>
+        </div>
+        {/* Dots */}
+        <div style={{display:'flex', gap:16, justifyContent:'center', marginBottom:28, animation: error?'shake 0.4s ease':'none'}}>
+          {[0,1,2,3].map(i=>(
+            <div key={i} style={{
+              width:16, height:16, borderRadius:'50%',
+              background: i<val.length ? (error?'var(--v-color)':'var(--d-color)') : 'var(--border)',
+              transition:'background 0.15s',
+            }}/>
+          ))}
+        </div>
+        {/* Numpad */}
+        <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12}}>
+          {digits.map((d,i)=>(
+            <button key={i} onClick={()=>press(d)} style={{
+              height:60, borderRadius:16, border:'none',
+              background: d==='' ? 'transparent' : 'var(--bg)',
+              fontSize: d==='⌫' ? 20 : 24, fontWeight:700, fontFamily:'Nunito',
+              color:'var(--text)', cursor: d===''?'default':'pointer',
+              transition:'transform 0.1s, background 0.1s',
+            }}>{d}</button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── App Password Changer (used inside Parent Settings) ────────
+function AppPasswordChanger() {
+  const [val, setVal] = useState(getAppPassword());
+  const [saved, setSaved] = useState(false);
+  const save = () => {
+    if(val.trim().length >= 3) {
+      setAppPassword(val.trim());
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1800);
+    }
+  };
+  return (
+    <div style={{display:'flex', gap:10, alignItems:'center'}}>
+      <input
+        type="text" value={val} onChange={e=>setVal(e.target.value)}
+        style={{
+          flex:1, padding:'10px 14px', borderRadius:12,
+          border:'1.5px solid var(--border)', background:'var(--bg)',
+          fontFamily:'Nunito', fontWeight:700, fontSize:15, color:'var(--text)', outline:'none',
+        }}
+      />
+      <button onClick={save} style={{
+        padding:'10px 16px', borderRadius:12, border:'none',
+        background: saved ? 'var(--green)' : 'var(--d-color)', color:'#fff',
+        fontFamily:'Nunito', fontWeight:800, fontSize:14, cursor:'pointer', transition:'background 0.2s',
+      }}>{saved ? '✓' : 'Speichern'}</button>
+    </div>
+  );
+}
+
+// ── Task Manager (inside Parent Settings) ────────────────────
+function TaskManager({ state, setState }) {
+  const [icon, setIcon] = useState('⭐');
+  const [label, setLabel] = useState('');
+  const [pts, setPts] = useState('5');
+  const [saved, setSaved] = useState(false);
+  const tasks = state.tasks;
+
+  const addTask = () => {
+    if(!label.trim()) return;
+    const newTask = { id: 'custom_' + Date.now(), icon: icon.trim() || '⭐', label: label.trim(), pts: Math.max(1, parseInt(pts)||5) };
+    setState(prev => {
+      const next = { ...prev, tasks: [...prev.tasks, newTask] };
+      saveState(next); return next;
+    });
+    setLabel(''); setPts('5'); setIcon('⭐');
+    setSaved(true); setTimeout(() => setSaved(false), 1500);
+  };
+
+  const removeTask = (id) => {
+    setState(prev => {
+      const next = { ...prev, tasks: prev.tasks.filter(t => t.id !== id) };
+      saveState(next); return next;
+    });
+  };
+
+  const updatePts = (id, val) => {
+    setState(prev => {
+      const next = { ...prev, tasks: prev.tasks.map(t => t.id===id ? {...t, pts: Math.max(1, parseInt(val)||1)} : t) };
+      saveState(next); return next;
+    });
+  };
+
+  return (
+    <div>
+      {/* Existing tasks */}
+      <div style={{background:'#fff', borderRadius:20, padding:'4px 0', boxShadow:'var(--shadow)', marginBottom:16}}>
+        {tasks.map((task, i) => (
+          <div key={task.id} style={{display:'flex', alignItems:'center', gap:10, padding:'10px 14px',
+            borderBottom: i<tasks.length-1 ? '1px solid var(--border)' : 'none'}}>
+            <span style={{fontSize:22, width:32, textAlign:'center'}}>{task.icon}</span>
+            <div style={{flex:1}}>
+              <div style={{fontWeight:700, fontSize:13, color:'var(--text)'}}>{task.label}</div>
+            </div>
+            <input type="number" min="1" value={task.pts}
+              onChange={e => updatePts(task.id, e.target.value)}
+              style={{width:48, border:'1.5px solid var(--border)', borderRadius:8, padding:'4px 6px',
+                fontFamily:'Nunito', fontWeight:800, fontSize:13, color:'var(--text)',
+                textAlign:'center', outline:'none', background:'var(--bg)'}}/>
+            <span style={{fontSize:11, fontWeight:600, color:'var(--text-3)', marginLeft:-4}}>P</span>
+            <button onClick={() => removeTask(task.id)} style={{
+              background:'#fff5f5', border:'1.5px solid #fecaca', borderRadius:8,
+              width:30, height:30, cursor:'pointer', fontSize:14, color:'#dc2626',
+              display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0,
+            }}>🗑</button>
+          </div>
+        ))}
+      </div>
+
+      {/* Add new task */}
+      <div style={{background:'#fff', borderRadius:20, padding:'16px', boxShadow:'var(--shadow)'}}>
+        <div style={{fontWeight:800, fontSize:13, color:'var(--text)', marginBottom:12}}>➕ Neue Aufgabe</div>
+        <div style={{display:'flex', gap:8, marginBottom:10}}>
+          <input value={icon} onChange={e=>setIcon(e.target.value)} maxLength={2}
+            placeholder="🏠" style={{
+              width:52, padding:'10px 8px', borderRadius:12, border:'1.5px solid var(--border)',
+              background:'var(--bg)', fontFamily:'Nunito', fontSize:20, textAlign:'center', outline:'none',
+            }}/>
+          <input value={label} onChange={e=>setLabel(e.target.value)} placeholder="Aufgabe eingeben..."
+            style={{
+              flex:1, padding:'10px 12px', borderRadius:12, border:'1.5px solid var(--border)',
+              background:'var(--bg)', fontFamily:'Nunito', fontWeight:600, fontSize:14,
+              color:'var(--text)', outline:'none',
+            }}/>
+        </div>
+        <div style={{display:'flex', gap:8}}>
+          <div style={{display:'flex', alignItems:'center', gap:6, background:'var(--bg)', borderRadius:12, padding:'0 12px', border:'1.5px solid var(--border)'}}>
+            <input type="number" min="1" value={pts} onChange={e=>setPts(e.target.value)}
+              style={{width:44, border:'none', background:'transparent', fontFamily:'Nunito',
+                fontWeight:800, fontSize:16, color:'var(--text)', textAlign:'center', outline:'none'}}/>
+            <span style={{fontWeight:600, fontSize:13, color:'var(--text-3)'}}>Punkte</span>
+          </div>
+          <button onClick={addTask} style={{
+            flex:1, padding:'10px', borderRadius:12, border:'none',
+            background: saved ? 'var(--green)' : 'var(--d-color)', color:'#fff',
+            fontFamily:'Nunito', fontWeight:800, fontSize:14, cursor:'pointer', transition:'background 0.2s',
+          }}>{saved ? '✓ Gespeichert!' : 'Hinzufügen'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Parent Mode Screen ────────────────────────────────────────
+function ParentScreen({ state, setState, onClose }) {
+  const [confettis, setConfettis] = useState([]);
+  const week = state.weekKey;
+  const tasks = state.tasks;
+  const [tab, setTab] = useState('pending');
+
+  const allPending = KIDS.flatMap(k =>
+    getKidPending(state.completions, k.id, week, tasks).map(t => ({...t, kid: k}))
+  );
+
+  const confirm = (kidId, taskId, e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setConfettis(c => [...c, { id: Date.now()+taskId, x: rect.left+rect.width/2, y: rect.top, color: KIDS.find(k=>k.id===kidId).color }]);
+    setState(prev => {
+      const comp = { ...prev.completions[kidId], [taskId]: week+'_confirmed' };
+      const next = { ...prev, completions: { ...prev.completions, [kidId]: comp } };
+      saveState(next); return next;
+    });
+  };
+
+  const reject = (kidId, taskId) => {
+    setState(prev => {
+      const comp = { ...prev.completions[kidId] };
+      delete comp[taskId];
+      const next = { ...prev, completions: { ...prev.completions, [kidId]: comp } };
+      saveState(next); return next;
+    });
+  };
+
+  const updatePrize = (key, val) => {
+    setState(prev => {
+      const next = { ...prev, settings: { ...prev.settings, [key]: val } };
+      saveState(next); return next;
+    });
+  };
+
+  const updatePin = (val) => {
+    if(val.length <= 4 && /^\d*$/.test(val)) {
+      setState(prev => {
+        const next = { ...prev, settings: { ...prev.settings, pin: val } };
+        saveState(next); return next;
+      });
+    }
+  };
+
+  const scores = KIDS.map(k => ({
+    ...k,
+    pts: getKidPts(state.completions, k.id, week, tasks),
+    pending: getKidPending(state.completions, k.id, week, tasks).length,
+    confirmed: getKidConfirmed(state.completions, k.id, week, tasks).length,
+  })).sort((a,b) => b.pts - a.pts);
+
+  return (
+    <div style={{position:'fixed', inset:0, background:'var(--bg)', zIndex:400, display:'flex', flexDirection:'column', overflow:'hidden'}}>
+      {confettis.map(c => <Confetti key={c.id} x={c.x} y={c.y} color={c.color} onDone={()=>setConfettis(p=>p.filter(x=>x.id!==c.id))}/>)}
+
+      {/* Header */}
+      <div style={{background:'#fff', padding:'16px 20px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:14,
+        paddingTop:'max(16px, env(safe-area-inset-top, 16px))'}}>
+        <button onClick={onClose} style={{background:'var(--bg)', border:'none', borderRadius:12, width:36, height:36, fontSize:18, cursor:'pointer'}}>←</button>
+        <div>
+          <div style={{fontWeight:900, fontSize:17, color:'var(--text)'}}>🔓 Eltern-Modus</div>
+          <div style={{fontWeight:600, fontSize:12, color:'var(--text-3)'}}>Aufgaben bestätigen & Einstellungen</div>
+        </div>
+      </div>
+
+      {/* Sub Tabs */}
+      <div style={{background:'#fff', padding:'0 20px 12px', display:'flex', gap:8, borderBottom:'1px solid var(--border)'}}>
+        {[{id:'pending',label:`⏳ Ausstehend (${allPending.length})`},{id:'tasks',label:'📋 Aufgaben'},{id:'settings',label:'⚙️ Einstellungen'}].map(t=>(
+          <button key={t.id} onClick={()=>setTab(t.id)} style={{
+            padding:'8px 16px', borderRadius:20, border:'none', fontFamily:'Nunito', fontWeight:700, fontSize:12, cursor:'pointer',
+            background: tab===t.id ? 'var(--d-color)' : 'var(--bg)',
+            color: tab===t.id ? '#fff' : 'var(--text-2)',
+            transition:'all 0.2s',
+          }}>{t.label}</button>
+        ))}
+      </div>
+
+      <div style={{flex:1, overflowY:'auto', padding:'16px 20px', WebkitOverflowScrolling:'touch'}}>
+        {tab==='pending' && (
+          <div>
+            {allPending.length === 0 ? (
+              <div style={{textAlign:'center', padding:'40px 20px'}}>
+                <div style={{fontSize:48, marginBottom:12}}>✅</div>
+                <div style={{fontWeight:800, fontSize:17, color:'var(--text)'}}>Alles bestätigt!</div>
+                <div style={{fontWeight:600, fontSize:13, color:'var(--text-3)', marginTop:6}}>Keine ausstehenden Aufgaben</div>
+              </div>
+            ) : (
+              <div>
+                <div style={{fontWeight:800, fontSize:14, color:'var(--text)', marginBottom:12}}>
+                  Warten auf Bestätigung
+                </div>
+                {allPending.map((item, i) => (
+                  <div key={item.kid.id+item.id} style={{
+                    background:'#fff', borderRadius:18, padding:'14px 16px', marginBottom:10,
+                    border:'1.5px solid var(--orange-light)', boxShadow:'var(--shadow)',
+                    animation:`fadeUp 0.3s ${i*0.05}s ease both`,
+                  }}>
+                    <div style={{display:'flex', alignItems:'center', gap:12, marginBottom:12}}>
+                      <div style={{fontSize:26, width:40, height:40, display:'flex', alignItems:'center', justifyContent:'center',
+                        background:'var(--orange-light)', borderRadius:12}}>{item.icon}</div>
+                      <div style={{flex:1}}>
+                        <div style={{fontWeight:700, fontSize:14, color:'var(--text)'}}>{item.label}</div>
+                        <div style={{display:'flex', alignItems:'center', gap:6, marginTop:3}}>
+                          <div style={{width:20, height:20, borderRadius:'50%', background:item.kid.color,
+                            display:'flex', alignItems:'center', justifyContent:'center', fontSize:11}}>{item.kid.emoji}</div>
+                          <span style={{fontWeight:700, fontSize:12, color:item.kid.color}}>{item.kid.name}</span>
+                          <span style={{fontWeight:600, fontSize:12, color:'var(--orange)'}}>· {item.pts} Punkte</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{display:'flex', gap:8}}>
+                      <button onClick={e=>confirm(item.kid.id, item.id, e)} style={{
+                        flex:1, padding:'10px', borderRadius:14, border:'none',
+                        background:'var(--green)', color:'#fff', fontFamily:'Nunito',
+                        fontWeight:800, fontSize:14, cursor:'pointer',
+                      }}>✓ Bestätigen</button>
+                      <button onClick={()=>reject(item.kid.id, item.id)} style={{
+                        flex:1, padding:'10px', borderRadius:14, border:'1.5px solid var(--border)',
+                        background:'#fff', color:'var(--text-2)', fontFamily:'Nunito',
+                        fontWeight:700, fontSize:14, cursor:'pointer',
+                      }}>✗ Ablehnen</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Score overview */}
+            <div style={{marginTop:20}}>
+              <div style={{fontWeight:800, fontSize:14, color:'var(--text)', marginBottom:12}}>Punktestand</div>
+              {scores.map((k, i) => (
+                <div key={k.id} style={{background:'#fff', borderRadius:18, padding:'14px 16px', marginBottom:10,
+                  border:`1.5px solid ${k.mid}`, animation:`fadeUp 0.3s ${i*0.1}s ease both`}}>
+                  <div style={{display:'flex', alignItems:'center', gap:12}}>
+                    <div style={{width:44, height:44, borderRadius:'50%', background:k.color,
+                      display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, color:'#fff',
+                      boxShadow:`0 4px 12px ${k.color}44`}}>{k.emoji}</div>
+                    <div style={{flex:1}}>
+                      <div style={{fontWeight:800, fontSize:15, color:'var(--text)'}}>{k.name}</div>
+                      <div style={{fontWeight:600, fontSize:12, color:'var(--text-3)', marginTop:2}}>
+                        {k.confirmed} bestätigt · {k.pending} ausstehend
+                      </div>
+                    </div>
+                    <div style={{textAlign:'right'}}>
+                      <div style={{fontWeight:900, fontSize:24, color:k.color}}>{k.pts}</div>
+                      <div style={{fontWeight:600, fontSize:11, color:'var(--text-3)'}}>Punkte</div>
+                    </div>
+                  </div>
+                  <div style={{marginTop:10, background:'var(--bg)', borderRadius:8, height:8, overflow:'hidden'}}>
+                    {(() => { const maxP = tasks.reduce((s,t)=>s+t.pts,0); return (
+                      <div style={{height:'100%', background:k.color, borderRadius:8,
+                        width:`${maxP>0?(k.pts/maxP)*100:0}%`, transition:'width 0.6s ease'}}/>
+                    ); })()}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {tab==='tasks' && (
+          <div>
+            <div style={{fontWeight:800, fontSize:14, color:'var(--text)', marginBottom:12}}>📋 Aufgaben verwalten</div>
+            <TaskManager state={state} setState={setState}/>
+          </div>
+        )}
+
+        {tab==='settings' && (
+          <div>
+            <div style={{fontWeight:800, fontSize:14, color:'var(--text)', marginBottom:12}}>💶 Wochenpreis (Taschengeld)</div>
+            <div style={{background:'#fff', borderRadius:20, padding:'18px', boxShadow:'var(--shadow)', marginBottom:20}}>
+              {[{key:'prize1', label:'🥇 1. Platz', color:'var(--gold)'},{key:'prize2', label:'🥈 2. Platz', color:'var(--text-3)'}].map(item=>(
+                <div key={item.key} style={{display:'flex', alignItems:'center', gap:14, marginBottom: item.key==='prize1'?16:0}}>
+                  <div style={{fontWeight:800, fontSize:16, flex:1, color:item.color}}>{item.label}</div>
+                  <div style={{display:'flex', alignItems:'center', gap:8, background:'var(--bg)', borderRadius:14, padding:'8px 14px'}}>
+                    <span style={{fontWeight:700, fontSize:15, color:'var(--text-2)'}}>€</span>
+                    <input
+                      type="number" min="0" step="0.5"
+                      value={state.settings[item.key]}
+                      onChange={e=>updatePrize(item.key, e.target.value)}
+                      style={{
+                        width:60, border:'none', background:'transparent',
+                        fontFamily:'Nunito', fontWeight:900, fontSize:20, color:'var(--text)',
+                        textAlign:'center', outline:'none',
+                      }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{fontWeight:800, fontSize:14, color:'var(--text)', marginBottom:12}}>🔑 PIN ändern</div>
+            <div style={{background:'#fff', borderRadius:20, padding:'18px', boxShadow:'var(--shadow)', marginBottom:20}}>
+              <div style={{fontWeight:600, fontSize:13, color:'var(--text-3)', marginBottom:10}}>Aktueller PIN (4 Ziffern)</div>
+              <input
+                type="tel" maxLength={4}
+                value={state.settings.pin}
+                onChange={e=>updatePin(e.target.value)}
+                placeholder="1234"
+                style={{
+                  width:'100%', padding:'12px 16px', borderRadius:14,
+                  border:'1.5px solid var(--border)', background:'var(--bg)',
+                  fontFamily:'Nunito', fontWeight:800, fontSize:22, color:'var(--text)',
+                  textAlign:'center', outline:'none', letterSpacing:12,
+                }}
+              />
+              <div style={{fontWeight:600, fontSize:11, color:'var(--text-3)', marginTop:8, textAlign:'center'}}>
+                Standard-PIN: 1234
+              </div>
+            </div>
+
+            <div style={{fontWeight:800, fontSize:14, color:'var(--text)', marginBottom:12}}>🔐 App-Passwort ändern</div>
+            <div style={{background:'#fff', borderRadius:20, padding:'18px', boxShadow:'var(--shadow)', marginBottom:20}}>
+              <div style={{fontWeight:600, fontSize:13, color:'var(--text-3)', marginBottom:10}}>Passwort für alle Nutzer</div>
+              <AppPasswordChanger/>
+            </div>
+
+            <div style={{fontWeight:800, fontSize:14, color:'var(--text)', marginBottom:12}}>🗑️ Woche zurücksetzen</div>
+            <div style={{background:'#fff', borderRadius:20, padding:'18px', boxShadow:'var(--shadow)'}}>
+              <div style={{fontWeight:600, fontSize:13, color:'var(--text-2)', marginBottom:14}}>
+                Alle Aufgaben dieser Woche löschen und neu starten
+              </div>
+              <button onClick={()=>{
+                if(window.confirm('Wirklich alle Aufgaben dieser Woche zurücksetzen?')) {
+                  setState(prev=>{
+                    const next={...prev, completions:{daniil:{},viktoria:{}}};
+                    saveState(next); return next;
+                  });
+                }
+              }} style={{
+                width:'100%', padding:'12px', borderRadius:14,
+                border:'1.5px solid #fecaca', background:'#fff5f5',
+                color:'#dc2626', fontFamily:'Nunito', fontWeight:800, fontSize:14, cursor:'pointer',
+              }}>Woche zurücksetzen</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── TaskCard ──────────────────────────────────────────────────
+function TaskCard({ task, status, color, light, mid, onToggle, idx }) {
+  const [floating, setFloating] = useState(false);
+  const [confettiPos, setConfettiPos] = useState(null);
+  const ref = useRef(null);
+
+  const handle = () => {
+    if(status !== 'confirmed') {
+      if(status !== 'pending') {
+        const rect = ref.current?.getBoundingClientRect();
+        if(rect) setConfettiPos({x:rect.left+rect.width/2, y:rect.top+rect.height/2});
+        setFloating(true); setTimeout(()=>setFloating(false),1000);
+      }
+      onToggle(task.id);
+    }
+  };
+
+  const isPending = status==='pending', isDone = status==='confirmed';
+  const bgColor = isDone ? light : isPending ? 'var(--orange-light)' : '#fff';
+  const borderColor = isDone ? mid : isPending ? 'var(--orange)' : 'var(--border)';
+
+  return (
+    <div ref={ref} style={{position:'relative', animation:`fadeUp 0.35s ${idx*0.06}s ease both`}}>
+      {floating && !isDone && !isPending && <FloatingPts pts={task.pts} color={color}/>}
+      {confettiPos && <Confetti x={confettiPos.x} y={confettiPos.y} color={color} onDone={()=>setConfettiPos(null)}/>}
+      <div onClick={handle} style={{
+        display:'flex', alignItems:'center', gap:14,
+        background:bgColor, border:`1.5px solid ${borderColor}`,
+        borderRadius:18, padding:'14px 16px', marginBottom:10,
+        cursor: isDone ? 'default' : 'pointer',
+        transition:'all 0.25s', boxShadow: isDone||isPending ? 'none' : 'var(--shadow)',
+      }}>
+        <div style={{fontSize:26, width:42, height:42, display:'flex', alignItems:'center', justifyContent:'center',
+          background: isDone ? mid : isPending ? 'var(--orange-light)' : 'var(--bg)',
+          borderRadius:12, transition:'all 0.2s',
+        }}>{task.icon}</div>
+        <div style={{flex:1}}>
+          <div style={{fontWeight:700, fontSize:15, color:'var(--text)',
+            textDecoration: isDone ? 'line-through' : 'none', textDecorationColor:'var(--text-3)'}}>
+            {task.label}
+          </div>
+          <div style={{fontWeight:700, fontSize:12, marginTop:2,
+            color: isDone ? color : isPending ? 'var(--orange)' : 'var(--text-3)'}}>
+            {task.pts} Punkte{isPending ? ' · ⏳ Wartet auf Bestätigung' : isDone ? ' · ✓ Bestätigt' : ''}
+          </div>
+        </div>
+        <div style={{
+          width:28, height:28, borderRadius:'50%', flexShrink:0,
+          border:`2px solid ${isDone ? color : isPending ? 'var(--orange)' : 'var(--border)'}`,
+          background: isDone ? color : isPending ? 'var(--orange-light)' : 'transparent',
+          display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.25s',
+        }}>
+          {isDone && <span style={{color:'#fff', fontSize:13, fontWeight:900, animation:'checkPop 0.3s ease'}}>✓</span>}
+          {isPending && <span style={{fontSize:13, animation:'pendingPulse 1.5s infinite'}}>⏳</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Home Screen ───────────────────────────────────────────────
+function HomeScreen({ state, activeKid, setActiveKid }) {
+  const week = state.weekKey;
+  const tasks = state.tasks;
+  const maxPts = tasks.reduce((s,t)=>s+t.pts,0);
+  const scores = KIDS.map(k => ({
+    ...k,
+    pts: getKidPts(state.completions, k.id, week, tasks),
+    confirmed: getKidConfirmed(state.completions, k.id, week, tasks).length,
+    pending: getKidPending(state.completions, k.id, week, tasks).length,
+  }));
+  const ak = scores.find(k=>k.id===activeKid);
+  const pct = ak && maxPts > 0 ? ak.pts/maxPts : 0;
+  const sortedScores = [...scores].sort((a,b)=>b.pts-a.pts);
+  const leader = sortedScores[0].pts > sortedScores[1].pts ? sortedScores[0] : null;
+
+  const days = ['Mo','Di','Mi','Do','Fr','Sa','So'];
+  const todayIdx = (() => { const d=new Date().getDay(); return d===0?6:d-1; })();
+
+  const motivText = ak?.pts===0 ? "Los geht's! 💪" : ak?.pts<20 ? 'Guter Start! 🌟' : ak?.pts<50 ? 'Super! Weiter so! 🔥' : 'Unglaublich! 🚀';
+
+  return (
+    <div style={{padding:'0 20px 20px', animation:'fadeUp 0.4s ease'}}>
+      {/* Hero */}
+      <div style={{
+        background:`linear-gradient(135deg, ${ak?.color} 0%, ${ak?.id==='daniil'?'oklch(52% 0.22 280)':'oklch(52% 0.22 355)'} 100%)`,
+        borderRadius:24, padding:'24px 22px', marginBottom:18, color:'#fff',
+        boxShadow:`0 8px 32px ${ak?.color}44`, transition:'all 0.4s ease',
+      }}>
+        <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start'}}>
+          <div>
+            <div style={{fontSize:13, fontWeight:600, opacity:0.85, marginBottom:4}}>Bestätigte Punkte</div>
+            <div style={{fontSize:46, fontWeight:900, lineHeight:1}}>{ak?.pts}</div>
+            <div style={{fontSize:15, fontWeight:700, opacity:0.9, marginTop:4}}>Punkte diese Woche</div>
+            {(ak?.pending||0)>0 && (
+              <div style={{marginTop:8, background:'rgba(255,255,255,0.2)', borderRadius:10, padding:'5px 10px',
+                fontSize:12, fontWeight:700, display:'inline-block'}}>
+                ⏳ {ak.pending} warten auf Bestätigung
+              </div>
+            )}
+          </div>
+          <Ring pct={pct} size={72} stroke={7} label={`${Math.round(pct*100)}%`}/>
+        </div>
+        <div style={{marginTop:16, background:'rgba(255,255,255,0.2)', borderRadius:12, padding:'8px 14px',
+          display:'flex', alignItems:'center', gap:8}}>
+          <span style={{fontSize:14}}>🎯</span>
+          <span style={{fontSize:13, fontWeight:600}}>{ak?.confirmed} von {tasks.length} Aufgaben bestätigt</span>
+        </div>
+      </div>
+
+      {/* Kids */}
+      <div style={{display:'flex', gap:12, marginBottom:18}}>
+        {scores.map(k=>(
+          <div key={k.id} onClick={()=>setActiveKid(k.id)} style={{
+            flex:1, background:'#fff', borderRadius:20, padding:'16px', cursor:'pointer',
+            border:`2px solid ${activeKid===k.id ? k.color : 'var(--border)'}`,
+            boxShadow: activeKid===k.id ? `0 4px 18px ${k.color}33` : 'var(--shadow)',
+            transition:'all 0.25s', textAlign:'center',
+          }}>
+            <div style={{fontSize:28, marginBottom:6}}>{k.emoji}</div>
+            <div style={{fontWeight:800, fontSize:14, color:'var(--text)'}}>{k.name}</div>
+            <div style={{fontWeight:900, fontSize:22, color:k.color, lineHeight:1.1, marginTop:4}}>{k.pts}</div>
+            <div style={{fontWeight:600, fontSize:11, color:'var(--text-3)'}}>Punkte</div>
+            {k.pending>0 && <div style={{marginTop:6, fontSize:11, fontWeight:700, color:'var(--orange)'}}>⏳ {k.pending} offen</div>}
+          </div>
+        ))}
+        <div style={{
+          display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+          background:'#fff', borderRadius:20, padding:'16px', flex:0.7, boxShadow:'var(--shadow)',
+          border:'2px solid var(--border)', textAlign:'center',
+        }}>
+          {leader ? <>
+            <div style={{fontSize:22, marginBottom:4}}>👑</div>
+            <div style={{fontSize:11, fontWeight:700, color:'var(--text-3)'}}>Führt</div>
+            <div style={{fontSize:13, fontWeight:800, color:leader.color, marginTop:2}}>{leader.name}</div>
+          </> : <>
+            <div style={{fontSize:22, marginBottom:4}}>🤝</div>
+            <div style={{fontSize:11, fontWeight:700, color:'var(--text-3)'}}>Gleich-</div>
+            <div style={{fontSize:11, fontWeight:700, color:'var(--text-3)'}}>stand!</div>
+          </>}
+        </div>
+      </div>
+
+      {/* Week bar */}
+      <div style={{background:'#fff', borderRadius:20, padding:'16px 18px', boxShadow:'var(--shadow)', marginBottom:18}}>
+        <div style={{fontWeight:800, fontSize:14, color:'var(--text)', marginBottom:14}}>📅 Diese Woche</div>
+        <div style={{display:'flex', justifyContent:'space-between'}}>
+          {days.map((d,i)=>(
+            <div key={d} style={{display:'flex', flexDirection:'column', alignItems:'center', gap:5}}>
+              <div style={{fontSize:10, fontWeight:700, color:i===todayIdx?ak?.color:'var(--text-3)'}}>{d}</div>
+              <div style={{
+                width:30, height:30, borderRadius:'50%',
+                background: i===todayIdx?ak?.color : i<todayIdx?ak?.light:'var(--bg)',
+                border:`2px solid ${i===todayIdx?ak?.color:i<todayIdx?ak?.mid:'var(--border)'}`,
+                display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, transition:'all 0.3s',
+              }}>{i===todayIdx?'👟':i<todayIdx?'✓':''}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Motivation */}
+      <div style={{background:'var(--gold-light)', border:'1.5px solid var(--gold)', borderRadius:20, padding:'14px 18px',
+        display:'flex', gap:12, alignItems:'center'}}>
+        <span style={{fontSize:28}}>💪</span>
+        <div>
+          <div style={{fontWeight:900, fontSize:15, color:'var(--text)'}}>{motivText}</div>
+          <div style={{fontSize:12, color:'var(--text-2)', fontWeight:600, marginTop:2}}>
+            Noch {maxPts-(ak?.pts||0)} Punkte bis zum Maximum dieser Woche
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Tasks Screen ──────────────────────────────────────────────
+function TasksScreen({ state, setState, activeKid }) {
+  const kid = KIDS.find(k=>k.id===activeKid);
+  const week = state.weekKey;
+  const tasks = state.tasks;
+
+  const toggle = useCallback((taskId) => {
+    setState(prev => {
+      const comp = { ...prev.completions[activeKid] };
+      const cur = comp[taskId];
+      if(cur === week+'_pending') { delete comp[taskId]; }
+      else if(!cur) { comp[taskId] = week+'_pending'; }
+      const next = { ...prev, completions: { ...prev.completions, [activeKid]: comp } };
+      saveState(next); return next;
+    });
+  }, [activeKid, week, setState]);
+
+  const pts = getKidPts(state.completions, activeKid, week, tasks);
+  const confirmed = getKidConfirmed(state.completions, activeKid, week, tasks).length;
+  const pending = getKidPending(state.completions, activeKid, week, tasks).length;
+
+  return (
+    <div style={{padding:'0 20px 20px'}}>
+      <div style={{display:'flex', alignItems:'center', gap:14, marginBottom:20,
+        background:kid.light, borderRadius:20, padding:'14px 18px', border:`1.5px solid ${kid.mid}`}}>
+        <div style={{width:48, height:48, borderRadius:'50%', background:kid.color,
+          display:'flex', alignItems:'center', justifyContent:'center', fontSize:22, color:'#fff',
+          boxShadow:`0 4px 12px ${kid.color}44`}}>{kid.emoji}</div>
+        <div>
+          <div style={{fontWeight:800, fontSize:16, color:'var(--text)'}}>{kid.name}</div>
+          <div style={{fontWeight:700, fontSize:12, color:kid.color}}>{pts} Punkte · {confirmed} bestätigt</div>
+          {pending>0 && <div style={{fontWeight:700, fontSize:11, color:'var(--orange)', marginTop:2}}>⏳ {pending} warten auf Eltern-OK</div>}
+        </div>
+        <div style={{marginLeft:'auto', textAlign:'right'}}>
+          <div style={{fontSize:22, fontWeight:900, color:kid.color}}>{pts}P</div>
+        </div>
+      </div>
+
+      <div style={{background:'var(--orange-light)', border:'1.5px solid var(--orange)', borderRadius:16,
+        padding:'10px 14px', marginBottom:16, display:'flex', gap:10, alignItems:'center'}}>
+        <span style={{fontSize:18}}>ℹ️</span>
+        <div style={{fontWeight:700, fontSize:12, color:'var(--text-2)'}}>
+          Aufgabe antippen → wartet auf Eltern-Bestätigung → Punkte werden gutgeschrieben
+        </div>
+      </div>
+
+      <div style={{fontWeight:800, fontSize:14, color:'var(--text)', marginBottom:12}}>Aufgaben dieser Woche</div>
+      {tasks.map((task,i) => {
+        const rawStatus = state.completions[activeKid]?.[task.id];
+        const status = rawStatus===week+'_confirmed' ? 'confirmed' : rawStatus===week+'_pending' ? 'pending' : 'none';
+        return (
+          <TaskCard key={task.id} task={task} status={status} color={kid.color}
+            light={kid.light} mid={kid.mid} onToggle={toggle} idx={i}/>
+        );
+      })}
+
+      {confirmed===tasks.length && tasks.length > 0 && (
+        <div style={{textAlign:'center', padding:'20px', marginTop:8,
+          background:'var(--green-light)', borderRadius:20, border:'1.5px solid var(--green)', animation:'pop 0.4s ease'}}>
+          <div style={{fontSize:40}}>🎉</div>
+          <div style={{fontWeight:900, fontSize:18, color:'var(--text)', marginTop:8}}>Alle Aufgaben bestätigt!</div>
+          <div style={{fontWeight:600, fontSize:14, color:'var(--text-2)', marginTop:4}}>Fantastische Woche, {kid.name}!</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Leaderboard ───────────────────────────────────────────────
+function LeaderboardScreen({ state }) {
+  const week = state.weekKey;
+  const tasks = state.tasks;
+  const maxPts = tasks.reduce((s,t)=>s+t.pts,0);
+  const scores = KIDS.map(k=>({
+    ...k,
+    pts: getKidPts(state.completions, k.id, week, tasks),
+    confirmed: getKidConfirmed(state.completions, k.id, week, tasks).length,
+    pending: getKidPending(state.completions, k.id, week, tasks).length,
+  })).sort((a,b)=>b.pts-a.pts);
+  const isEqual = scores[0].pts===scores[1].pts;
+  const { prize1, prize2 } = state.settings;
+  const prizes = [prize1, prize2];
+
+  const [, m, d] = week.split('-');
+
+  return (
+    <div style={{padding:'0 20px 20px', animation:'fadeUp 0.4s ease'}}>
+      <div style={{textAlign:'center', marginBottom:20}}>
+        <div style={{fontSize:40}}>🏆</div>
+        <div style={{fontWeight:900, fontSize:22, color:'var(--text)', marginTop:6}}>Wochenrangliste</div>
+        <div style={{fontWeight:600, fontSize:13, color:'var(--text-3)', marginTop:2}}>Woche ab {d}.{m}.</div>
+      </div>
+
+      {/* Podium */}
+      <div style={{display:'flex', gap:12, marginBottom:20}}>
+        {scores.map((k,i)=>(
+          <div key={k.id} style={{
+            flex:1, background:'#fff', borderRadius:22, padding:'20px 14px',
+            boxShadow: i===0&&!isEqual ? `0 8px 28px ${k.color}33` : 'var(--shadow)',
+            border:`2px solid ${i===0&&!isEqual ? k.color : 'var(--border)'}`,
+            textAlign:'center', animation:`fadeUp 0.4s ${i*0.1}s ease both`,
+          }}>
+            <div style={{fontSize:24, marginBottom:6, animation: i===0&&!isEqual ? 'pulse 2s infinite' : 'none'}}>
+              {i===0&&!isEqual ? '👑' : '🥈'}
+            </div>
+            <div style={{width:52, height:52, borderRadius:'50%', background:k.color,
+              display:'flex', alignItems:'center', justifyContent:'center',
+              fontSize:24, margin:'0 auto 10px', color:'#fff',
+              boxShadow:`0 4px 14px ${k.color}44`}}>{k.emoji}</div>
+            <div style={{fontWeight:800, fontSize:15, color:'var(--text)'}}>{k.name}</div>
+            <div style={{fontWeight:900, fontSize:30, color:k.color, lineHeight:1.1, marginTop:6}}>{k.pts}</div>
+            <div style={{fontWeight:600, fontSize:12, color:'var(--text-3)'}}>Punkte</div>
+            {k.pending>0 && <div style={{fontSize:11, fontWeight:700, color:'var(--orange)', marginTop:4}}>+{k.pending} ausstehend</div>}
+
+            {prizes[i] && Number(prizes[i])>0 && (
+              <div style={{marginTop:12, background:'var(--gold-light)', border:'1.5px solid var(--gold)',
+                borderRadius:12, padding:'8px 10px'}}>
+                <div style={{fontSize:11, fontWeight:700, color:'var(--text-3)'}}>Preis</div>
+                <div style={{fontSize:20, fontWeight:900, color:'var(--gold)'}}>€ {prizes[i]}</div>
+                <div style={{fontSize:10, fontWeight:700, color:'var(--text-3)'}}>Taschengeld</div>
+              </div>
+            )}
+
+            <div style={{marginTop:10, background:'var(--bg)', borderRadius:8, height:7, overflow:'hidden'}}>
+              <div style={{height:'100%', background:k.color, borderRadius:8,
+                width:`${maxPts>0?(k.pts/maxPts)*100:0}%`, transition:'width 0.8s ease'}}/>
+            </div>
+            <div style={{fontSize:11, fontWeight:700, color:'var(--text-3)', marginTop:4}}>
+              {k.confirmed}/{tasks.length} bestätigt
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Task breakdown */}
+      <div style={{fontWeight:800, fontSize:14, color:'var(--text)', marginBottom:12}}>Aufgaben-Übersicht</div>
+      <div style={{background:'#fff', borderRadius:20, padding:'4px 0', boxShadow:'var(--shadow)'}}>
+        {tasks.map((task,i)=>(
+          <div key={task.id} style={{display:'flex', alignItems:'center', gap:12, padding:'11px 18px',
+            borderBottom: i<tasks.length-1 ? '1px solid var(--border)' : 'none'}}>
+            <span style={{fontSize:22, width:32, textAlign:'center'}}>{task.icon}</span>
+            <div style={{flex:1}}>
+              <div style={{fontWeight:700, fontSize:13, color:'var(--text)'}}>{task.label}</div>
+              <div style={{fontWeight:600, fontSize:11, color:'var(--text-3)'}}>{task.pts} Punkte</div>
+            </div>
+            <div style={{display:'flex', gap:6}}>
+              {KIDS.map(k=>{
+                const rawStatus = state.completions[k.id]?.[task.id];
+                const isConf = rawStatus===week+'_confirmed';
+                const isPend = rawStatus===week+'_pending';
+                return (
+                  <div key={k.id} style={{
+                    width:28, height:28, borderRadius:'50%',
+                    background: isConf ? k.color : isPend ? 'var(--orange-light)' : 'var(--bg)',
+                    border:`2px solid ${isConf?k.color:isPend?'var(--orange)':'var(--border)'}`,
+                    display:'flex', alignItems:'center', justifyContent:'center', fontSize:11,
+                  }}>
+                    {isConf ? <span style={{color:'#fff',fontWeight:900}}>✓</span>
+                     : isPend ? <span>⏳</span>
+                     : <span style={{color:'var(--text-3)',fontWeight:700}}>{k.name[0]}</span>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{marginTop:12, display:'flex', gap:16, flexWrap:'wrap'}}>
+        {KIDS.map(k=>(
+          <div key={k.id} style={{display:'flex', alignItems:'center', gap:5}}>
+            <div style={{width:12, height:12, borderRadius:'50%', background:k.color}}/>
+            <span style={{fontSize:12, fontWeight:600, color:'var(--text-2)'}}>{k.name}</span>
+          </div>
+        ))}
+        <div style={{display:'flex', alignItems:'center', gap:5}}>
+          <div style={{width:12, height:12, borderRadius:'50%', background:'var(--orange)'}}/>
+          <span style={{fontSize:12, fontWeight:600, color:'var(--text-2)'}}>ausstehend</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Bottom Nav ────────────────────────────────────────────────
+function BottomNav({ tab, setTab, activeKid }) {
+  const kid = KIDS.find(k=>k.id===activeKid);
+  const items = [{id:'home',icon:'🏠',label:'Übersicht'},{id:'tasks',icon:'✅',label:'Aufgaben'},{id:'rank',icon:'🏆',label:'Rangliste'}];
+  return (
+    <div style={{
+      background:'#fff', borderTop:'1px solid var(--border)',
+      display:'flex', paddingTop:8,
+      paddingBottom:'max(20px, env(safe-area-inset-bottom, 20px))',
+      flexShrink:0,
+    }}>
+      {items.map(item=>(
+        <div key={item.id} onClick={()=>setTab(item.id)} style={{
+          flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:3, cursor:'pointer',
+        }}>
+          <div style={{
+            width:44, height:34, borderRadius:12,
+            background: tab===item.id ? kid.light : 'transparent',
+            display:'flex', alignItems:'center', justifyContent:'center',
+            fontSize:20, transition:'all 0.2s',
+            transform: tab===item.id ? 'scale(1.1)' : 'scale(1)',
+          }}>{item.icon}</div>
+          <div style={{
+            fontSize:10, fontWeight: tab===item.id ? 800 : 600,
+            color: tab===item.id ? kid.color : 'var(--text-3)', transition:'all 0.2s',
+          }}>{item.label}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── App Password Gate ─────────────────────────────────────────
+const APP_PW_KEY = 'habits_app_pw';
+function getAppPassword() {
+  try { const s = localStorage.getItem('habits_settings'); if(s) { const p = JSON.parse(s); if(p.appPassword) return p.appPassword; } } catch(e){}
+  return 'familie';
+}
+function setAppPassword(pw) {
+  try { const s = localStorage.getItem('habits_settings'); const obj = s ? JSON.parse(s) : {}; obj.appPassword = pw; localStorage.setItem('habits_settings', JSON.stringify(obj)); } catch(e){}
+}
+
+function LoginScreen({ onLogin }) {
+  const [val, setVal] = useState('');
+  const [error, setError] = useState(false);
+  const [show, setShow] = useState(false);
+
+  const submit = (e) => {
+    e && e.preventDefault();
+    if(val === getAppPassword()) {
+      sessionStorage.setItem(APP_PW_KEY, '1');
+      window.location.reload();
+    } else {
+      setError(true);
+      setVal('');
+      setTimeout(() => setError(false), 1200);
+    }
+  };
+
+  return (
+    <div style={{
+      width:'100%', height:'100%', display:'flex', flexDirection:'column',
+      alignItems:'center', justifyContent:'center', background:'var(--bg)',
+      fontFamily:'Nunito, sans-serif', padding:32,
+    }}>
+      <div style={{width:'100%', maxWidth:360, animation:'fadeUp 0.5s ease'}}>
+        {/* Logo area */}
+        <div style={{textAlign:'center', marginBottom:40}}>
+          <div style={{fontSize:56, marginBottom:12}}>🏠✨</div>
+          <div style={{fontWeight:900, fontSize:26, color:'var(--text)'}}>Haushalts-Punkte</div>
+          <div style={{fontWeight:600, fontSize:14, color:'var(--text-3)', marginTop:6}}>
+            Für Daniil & Viktoria
+          </div>
+        </div>
+
+        <form onSubmit={submit}>
+          <div style={{
+            background:'#fff', borderRadius:24, padding:24, boxShadow:'var(--shadow-lg)',
+            border: error ? '2px solid var(--v-color)' : '2px solid var(--border)',
+            transition:'border-color 0.2s', animation: error ? 'shake 0.4s ease' : 'none',
+          }}>
+            <div style={{fontWeight:800, fontSize:15, color:'var(--text)', marginBottom:16, textAlign:'center'}}>
+              🔐 Bitte einloggen
+            </div>
+            <div style={{position:'relative', marginBottom:16}}>
+              <input
+                autoFocus
+                type={show ? 'text' : 'password'}
+                value={val}
+                onChange={e => setVal(e.target.value)}
+                placeholder="Passwort eingeben"
+                style={{
+                  width:'100%', padding:'14px 48px 14px 16px', borderRadius:14,
+                  border:'1.5px solid var(--border)', background:'var(--bg)',
+                  fontFamily:'Nunito', fontWeight:700, fontSize:16, color:'var(--text)',
+                  outline:'none', boxSizing:'border-box',
+                  borderColor: error ? 'var(--v-color)' : 'var(--border)',
+                }}
+              />
+              <button type="button" onClick={()=>setShow(s=>!s)} style={{
+                position:'absolute', right:12, top:'50%', transform:'translateY(-50%)',
+                background:'none', border:'none', cursor:'pointer', fontSize:18, padding:4,
+              }}>{show ? '🙈' : '👁️'}</button>
+            </div>
+            {error && (
+              <div style={{textAlign:'center', fontSize:13, fontWeight:700, color:'var(--v-color)', marginBottom:12}}>
+                ❌ Falsches Passwort
+              </div>
+            )}
+            <button type="submit" style={{
+              width:'100%', padding:'14px', borderRadius:14, border:'none',
+              background:'var(--d-color)', color:'#fff',
+              fontFamily:'Nunito', fontWeight:900, fontSize:16, cursor:'pointer',
+              transition:'opacity 0.2s',
+            }}>Einloggen →</button>
+          </div>
+        </form>
+
+        <div style={{textAlign:'center', marginTop:20, fontSize:12, fontWeight:600, color:'var(--text-3)'}}>
+          Standard-Passwort: <strong>familie</strong>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── App ───────────────────────────────────────────────────────
+function App() {
+  const [loggedIn, setLoggedIn] = useState(() => sessionStorage.getItem(APP_PW_KEY) === '1');
+  const [state, setStateRaw] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState('home');
+  const [activeKid, setActiveKid] = useState('daniil');
+  const [showPin, setShowPin] = useState(false);
+  const [parentMode, setParentMode] = useState(false);
+
+  if(!loggedIn) return <LoginScreen onLogin={() => setLoggedIn(true)}/>;
+
+  const setState = useCallback((updater) => {
+    setStateRaw(prev => {
+      const next = typeof updater==='function' ? updater(prev) : updater;
+      const cur = getWeekKey();
+      const final = next.weekKey !== cur
+        ? { ...next, weekKey: cur, completions: {daniil:{}, viktoria:{}} }
+        : next;
+      saveState(final);
+      return final;
+    });
+  }, []);
+
+  useEffect(() => {
+    // Timeout: falls Firebase nach 8s nicht antwortet → localStorage Fallback
+    const timeout = setTimeout(() => {
+      if (!loading) return;
+      try { const r = localStorage.getItem('habits_v3'); if(r) { const s=JSON.parse(r); if(!s.tasks) s.tasks=TASKS_DEF; setStateRaw(s); } else { setStateRaw(defaultState()); } } catch(e) { setStateRaw(defaultState()); }
+      setLoading(false);
+    }, 8000);
+
+    let handler;
+    try {
+      handler = fbRef.on('value', snapshot => {
+        clearTimeout(timeout);
+        const data = snapshot.val();
+        const cur = getWeekKey();
+        if (!data) {
+          const def = defaultState();
+          fbRef.set(def);
+          setStateRaw(def);
+        } else {
+          if (!data.tasks) data.tasks = TASKS_DEF;
+          if (data.weekKey !== cur) {
+            const reset = { ...data, weekKey: cur, completions: {daniil:{}, viktoria:{}} };
+            fbRef.set(reset);
+            setStateRaw(reset);
+          } else {
+            setStateRaw(prev => {
+              if (JSON.stringify(prev) === JSON.stringify(data)) return prev;
+              return data;
+            });
+          }
+        }
+        setLoading(false);
+      }, err => {
+        clearTimeout(timeout);
+        console.error('Firebase Fehler:', err);
+        try { const r = localStorage.getItem('habits_v3'); if(r) { const s=JSON.parse(r); if(!s.tasks) s.tasks=TASKS_DEF; setStateRaw(s); } else { setStateRaw(defaultState()); } } catch(e) { setStateRaw(defaultState()); }
+        setLoading(false);
+      });
+    } catch(e) {
+      clearTimeout(timeout);
+      setStateRaw(defaultState());
+      setLoading(false);
+    }
+    return () => { clearTimeout(timeout); try { fbRef.off('value', handler); } catch(e){} };
+  }, []);
+
+  if (loading) return (
+    <div style={{width:'100%', height:'100%', display:'flex', flexDirection:'column',
+      alignItems:'center', justifyContent:'center', background:'var(--bg)', gap:16}}>
+      <div style={{fontSize:48}}>🏠</div>
+      <div style={{fontWeight:800, fontSize:16, color:'var(--text)'}}>Wird geladen…</div>
+      <div style={{width:48, height:48, border:'4px solid var(--border)',
+        borderTop:'4px solid var(--d-color)', borderRadius:'50%',
+        animation:'spin 0.8s linear infinite'}}/>
+    </div>
+  );
+
+  const pendingCount = KIDS.reduce((s,k)=>s+getKidPending(state.completions,k.id,state.weekKey,state.tasks).length, 0);
+
+  return (
+    <div style={{
+      width:'100%', height:'100%', background:'var(--bg)', fontFamily:'Nunito, sans-serif',
+      display:'flex', flexDirection:'column', overflow:'hidden', position:'relative',
+    }}>
+      {/* Top Bar */}
+      <div style={{
+        padding:'8px 20px 14px', display:'flex', alignItems:'center', justifyContent:'space-between',
+        paddingTop:'max(8px, env(safe-area-inset-top, 8px))',
+        flexShrink:0,
+      }}>
+        <div style={{fontWeight:900, fontSize:18, color:'var(--text)'}}>
+          {{home:'Übersicht',tasks:'Aufgaben',rank:'Rangliste'}[tab]}
+        </div>
+        <div style={{display:'flex', gap:8, alignItems:'center'}}>
+          {tab!=='rank' && KIDS.map(k=>(
+            <div key={k.id} onClick={()=>setActiveKid(k.id)} style={{
+              padding:'6px 14px', borderRadius:20,
+              background: activeKid===k.id ? k.color : 'var(--bg)',
+              color: activeKid===k.id ? '#fff' : 'var(--text-2)',
+              fontWeight:700, fontSize:13, cursor:'pointer', transition:'all 0.2s',
+              boxShadow: activeKid===k.id ? `0 4px 12px ${k.color}44` : 'none',
+            }}>{k.name}</div>
+          ))}
+          {/* Parent lock button */}
+          <div onClick={()=>setShowPin(true)} style={{
+            width:34, height:34, borderRadius:12, background:'var(--bg)',
+            display:'flex', alignItems:'center', justifyContent:'center',
+            cursor:'pointer', fontSize:16, position:'relative',
+          }}>
+            🔒
+            {pendingCount>0 && (
+              <div style={{position:'absolute', top:-4, right:-4, width:16, height:16, borderRadius:'50%',
+                background:'var(--orange)', color:'#fff', fontSize:9, fontWeight:900,
+                display:'flex', alignItems:'center', justifyContent:'center'}}>
+                {pendingCount}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div style={{flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch'}}>
+        {tab==='home'  && <HomeScreen  state={state} activeKid={activeKid} setActiveKid={setActiveKid}/>}
+        {tab==='tasks' && <TasksScreen state={state} setState={setState} activeKid={activeKid}/>}
+        {tab==='rank'  && <LeaderboardScreen state={state}/>}
+      </div>
+
+      <BottomNav tab={tab} setTab={setTab} activeKid={activeKid}/>
+
+      {showPin && (
+        <PinModal
+          correctPin={state.settings.pin}
+          onSuccess={()=>{ setShowPin(false); setParentMode(true); }}
+          onCancel={()=>setShowPin(false)}
+        />
+      )}
+
+      {parentMode && (
+        <ParentScreen state={state} setState={setState} onClose={()=>setParentMode(false)}/>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
