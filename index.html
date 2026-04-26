@@ -1120,14 +1120,23 @@ function App() {
     try {
       handler = fbRef.on('value', snapshot => {
         clearTimeout(timeout);
-        const data = snapshot.val();
+        const raw = snapshot.val();
         const cur = getWeekKey();
-        if (!data) {
+        if (!raw) {
           const def = defaultState();
           fbRef.set(def);
           setStateRaw(def);
         } else {
-          if (!data.tasks) data.tasks = TASKS_DEF;
+          // Firebase löscht leere Objekte — immer wiederherstellen
+          const data = {
+            ...raw,
+            tasks: raw.tasks || TASKS_DEF,
+            settings: raw.settings || { pin:'1234', prize1:'5', prize2:'2' },
+            completions: {
+              daniil:  (raw.completions && raw.completions.daniil)  || {},
+              viktoria:(raw.completions && raw.completions.viktoria) || {},
+            },
+          };
           if (data.weekKey !== cur) {
             const reset = { ...data, weekKey: cur, completions: {daniil:{}, viktoria:{}} };
             fbRef.set(reset);
