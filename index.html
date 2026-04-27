@@ -1706,7 +1706,7 @@ function LeaderboardScreen({ state }) {
             {k.penaltyPts>0 && <div style={{fontSize:11, fontWeight:700, color:'#dc2626', marginTop:2}}>⚡ -{k.penaltyPts} Strafe</div>}
 
             {prizes[i] && Number(prizes[i])>0 && (
-              maxPts>0 && k.pts>=maxPts*0.8 ? (
+              maxPts>0 && k.pts>=maxPts*0.65 ? (
                 <div style={{marginTop:12, background:'var(--gold-light)', border:'1.5px solid var(--gold)',
                   borderRadius:12, padding:'8px 10px'}}>
                   <div style={{fontSize:11, fontWeight:700, color:'var(--text-3)'}}>Preis 🎉</div>
@@ -1725,10 +1725,10 @@ function LeaderboardScreen({ state }) {
                   borderRadius:12, padding:'8px 10px'}}>
                   <div style={{fontSize:10, fontWeight:700, color:'#9a3412'}}>Taschengeld (€{prizes[i]}{i===0&&!isEqual&&bonusAmt>0?` + €${bonusAmt} Bonus`:''})</div>
                   <div style={{fontSize:14, fontWeight:900, color:'#ea580c'}}>
-                    noch {Math.max(0, Math.ceil(maxPts*0.8)-k.pts)} Pkt.
+                    noch {Math.max(0, Math.ceil(maxPts*0.65)-k.pts)} Pkt.
                   </div>
                   <div style={{fontSize:9, fontWeight:600, color:'#c2410c'}}>
-                    Ziel: 80% = {Math.ceil(maxPts*0.8)} Pkt.
+                    Ziel: 65% = {Math.ceil(maxPts*0.65)} Pkt.
                   </div>
                 </div>
               )
