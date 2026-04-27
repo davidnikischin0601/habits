@@ -1,4 +1,4 @@
-const CACHE = 'hauspunkte-v2';
+const CACHE = 'hauspunkte-v3';
 const ASSETS = ['./manifest.json', './icon.svg'];
 
 self.addEventListener('install', e => {
@@ -8,9 +8,10 @@ self.addEventListener('install', e => {
 
 self.addEventListener('activate', e => {
   e.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
-    )
+    caches.keys()
+      .then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
+      .then(() => self.clients.matchAll({ type: 'window' }))
+      .then(clients => clients.forEach(c => c.postMessage({ type: 'SW_UPDATED' })))
   );
   self.clients.claim();
 });
@@ -21,12 +22,11 @@ self.addEventListener('fetch', e => {
 
   const url = new URL(e.request.url);
 
-  // index.html: network-first — always try to get the latest version
+  // index.html: network-first — always serve the latest version
   if (url.pathname.endsWith('/') || url.pathname.endsWith('/index.html') || url.pathname.endsWith('/habits/')) {
     e.respondWith(
       fetch(e.request).then(resp => {
-        const clone = resp.clone();
-        caches.open(CACHE).then(c => c.put(e.request, clone));
+        caches.open(CACHE).then(c => c.put(e.request, resp.clone()));
         return resp;
       }).catch(() => caches.match('./index.html'))
     );
