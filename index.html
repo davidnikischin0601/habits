@@ -986,7 +986,9 @@ function ParentScreen({ state, setState, onClose }) {
                 Tägliche Erinnerung + Zahl auf dem App-Icon
               </div>
               <div style={{fontWeight:600, fontSize:11, color:'var(--text-3)', marginBottom:14}}>
-                Zeigt wie viele Aufgaben noch offen sind — einmal täglich als Benachrichtigung (7–21 Uhr)
+                • Sofort wenn ein Kind eine Aufgabe einreicht<br/>
+                • Einmal täglich offene Aufgaben (7–21 Uhr)<br/>
+                • Zahl auf dem App-Icon (Badge)
               </div>
               {(() => {
                 const perm = typeof Notification !== 'undefined' ? Notification.permission : 'unsupported';
@@ -995,12 +997,21 @@ function ParentScreen({ state, setState, onClose }) {
                   const result = await Notification.requestPermission();
                   if (result === 'granted') {
                     const sw = await navigator.serviceWorker?.ready.catch(() => null);
-                    if (sw) sw.showNotification('🏠 Haushalts-Punkte', {
-                      body: 'Erinnerungen sind jetzt aktiv! ✅',
-                      icon: './icon.svg',
-                      badge: './icon.svg',
-                      tag: 'test',
-                    });
+                    if (sw) {
+                      // Test-Benachrichtigung
+                      sw.showNotification('🏠 Haushalts-Punkte', {
+                        body: 'Erinnerungen aktiv ✅\nDu wirst benachrichtigt wenn Kinder Aufgaben einreichen.',
+                        icon: './icon.svg',
+                        badge: './icon.svg',
+                        tag: 'test',
+                      });
+                      // Hintergrund-Check registrieren (Android Chrome)
+                      if ('periodicSync' in sw) {
+                        try {
+                          await sw.periodicSync.register('pending-check', { minInterval: 5 * 60 * 1000 });
+                        } catch(e) {}
+                      }
+                    }
                   }
                 };
                 if (perm === 'granted') return (
@@ -2217,6 +2228,38 @@ function App() {
     };
 
     sendDailyReminder();
+
+    // Sofort benachrichtigen wenn Kinder neue Aufgaben zur Bestätigung einreichen
+    const notifyPending = async () => {
+      if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+      const pending = KIDS.flatMap(k =>
+        getKidPending(state.completions, k.id, state.weekKey, state.tasks)
+          .map(t => k.name + ':' + t.label)
+      ).sort();
+      if (pending.length === 0) {
+        localStorage.removeItem('_pending_notif_key');
+        return;
+      }
+      const pendingKey = pending.join('|');
+      if (localStorage.getItem('_pending_notif_key') === pendingKey) return; // schon gemeldet
+      const sw = await navigator.serviceWorker?.ready.catch(() => null);
+      if (!sw) return;
+      const byKid = {};
+      pending.forEach(entry => {
+        const [kid, task] = entry.split(':');
+        (byKid[kid] = byKid[kid] || []).push(task);
+      });
+      await sw.showNotification('✅ Aufgaben warten auf Bestätigung', {
+        body: Object.entries(byKid).map(([k, ts]) => `${k}: ${ts.join(', ')}`).join('\n'),
+        icon: './icon.svg',
+        badge: './icon.svg',
+        tag: 'pending-approval',
+        renotify: true,
+      });
+      localStorage.setItem('_pending_notif_key', pendingKey);
+    };
+
+    notifyPending();
   }, [state, loggedIn]);
 
   if(!loggedIn) return <LoginScreen onLogin={() => setLoggedIn(true)}/>;
