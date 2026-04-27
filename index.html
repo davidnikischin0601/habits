@@ -119,6 +119,7 @@ function defaultState() {
     settings: { pin:'1234', prize1:'5', prize2:'2', bonus:'10' },
     tasks: TASKS_DEF,
     penaltyDefs: PENALTIES_DEF,
+    taskPhotos: {},
   };
 }
 function saveState(s) {
@@ -798,8 +799,114 @@ function ParentScreen({ state, setState, onClose }) {
   );
 }
 
+// ── Task Info Modal ───────────────────────────────────────────
+function TaskInfoModal({ task, photo, onClose, onPhotoChange }) {
+  const fileRef = useRef(null);
+  const [processing, setProcessing] = useState(false);
+
+  const handleFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setProcessing(true);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 960;
+        let w = img.width, h = img.height;
+        if (w > MAX || h > MAX) {
+          if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+          else { w = Math.round(w * MAX / h); h = MAX; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        const compressed = canvas.toDataURL('image/jpeg', 0.75);
+        onPhotoChange(compressed);
+        setProcessing(false);
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  return (
+    <div style={{
+      position:'fixed', inset:0, background:'rgba(0,0,0,0.6)', zIndex:600,
+      display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'flex-end',
+    }} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{
+        background:'#fff', borderRadius:'28px 28px 0 0', width:'100%', maxWidth:480,
+        padding:'24px 24px 0', animation:'slideUp 0.3s ease',
+        maxHeight:'88vh', display:'flex', flexDirection:'column', overflow:'hidden',
+      }}>
+        {/* Header */}
+        <div style={{display:'flex', alignItems:'center', gap:12, marginBottom:18, flexShrink:0}}>
+          <div style={{fontSize:28, width:48, height:48, borderRadius:14,
+            background:'var(--d-light)', display:'flex', alignItems:'center', justifyContent:'center'}}>
+            {task.icon}
+          </div>
+          <div style={{flex:1}}>
+            <div style={{fontWeight:900, fontSize:17, color:'var(--text)'}}>{task.label}</div>
+            <div style={{fontWeight:600, fontSize:12, color:'var(--text-3)', marginTop:2}}>Referenzfoto – So soll es aussehen</div>
+          </div>
+          <button onClick={onClose} style={{
+            width:36, height:36, borderRadius:12, border:'none',
+            background:'var(--bg)', fontSize:18, cursor:'pointer', flexShrink:0,
+            color:'var(--text-2)', fontWeight:700,
+          }}>✕</button>
+        </div>
+
+        {/* Scroll area */}
+        <div style={{flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch',
+          paddingBottom:'max(28px, env(safe-area-inset-bottom, 28px))'}}>
+          {photo ? (
+            <div style={{marginBottom:14}}>
+              <img src={photo} alt="Referenz" style={{
+                width:'100%', borderRadius:18, display:'block',
+                objectFit:'cover', maxHeight:340, boxShadow:'var(--shadow)',
+              }}/>
+            </div>
+          ) : (
+            <div style={{
+              background:'var(--bg)', borderRadius:18, border:'2px dashed var(--border)',
+              padding:'44px 20px', textAlign:'center', marginBottom:14,
+            }}>
+              <div style={{fontSize:44, marginBottom:10}}>📷</div>
+              <div style={{fontWeight:800, fontSize:15, color:'var(--text-2)'}}>Noch kein Foto vorhanden</div>
+              <div style={{fontWeight:600, fontSize:12, color:'var(--text-3)', marginTop:5, lineHeight:1.5}}>
+                Lade ein Referenzfoto hoch,<br/>damit klar ist wie es aussehen soll
+              </div>
+            </div>
+          )}
+
+          <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} style={{display:'none'}}/>
+
+          <button onClick={()=>fileRef.current?.click()} disabled={processing} style={{
+            width:'100%', padding:'14px', borderRadius:16, border:'none',
+            background: processing ? 'var(--border)' : 'var(--d-color)',
+            color:'#fff', fontFamily:'Nunito', fontWeight:800, fontSize:15,
+            cursor: processing ? 'default' : 'pointer', transition:'all 0.2s',
+            marginBottom:10,
+          }}>
+            {processing ? '⏳ Wird verarbeitet…' : photo ? '📷 Foto ändern' : '📷 Foto hochladen'}
+          </button>
+
+          {photo && (
+            <button onClick={()=>onPhotoChange(null)} style={{
+              width:'100%', padding:'11px', borderRadius:16,
+              border:'1.5px solid #fecaca', background:'#fff5f5',
+              color:'#dc2626', fontFamily:'Nunito', fontWeight:700, fontSize:14, cursor:'pointer',
+            }}>🗑 Foto entfernen</button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── TaskCard ──────────────────────────────────────────────────
-function TaskCard({ task, status, color, light, mid, onToggle, idx }) {
+function TaskCard({ task, status, color, light, mid, onToggle, onInfo, hasPhoto, idx }) {
   const [floating, setFloating] = useState(false);
   const [confettiPos, setConfettiPos] = useState(null);
   const ref = useRef(null);
@@ -844,6 +951,16 @@ function TaskCard({ task, status, color, light, mid, onToggle, idx }) {
             {task.pts} Punkte{isPending ? ' · ⏳ Wartet auf Bestätigung' : isDone ? ' · ✓ Bestätigt' : ''}
           </div>
         </div>
+        {onInfo && (
+          <button onClick={e=>{e.stopPropagation(); onInfo(task);}} style={{
+            width:30, height:30, borderRadius:'50%', border:'none',
+            background: hasPhoto ? 'var(--d-light)' : 'var(--bg)',
+            color: hasPhoto ? 'var(--d-color)' : 'var(--text-3)',
+            fontSize:15, cursor:'pointer', flexShrink:0,
+            display:'flex', alignItems:'center', justifyContent:'center',
+            transition:'all 0.2s',
+          }}>{hasPhoto ? '🖼️' : 'ℹ️'}</button>
+        )}
         <div style={{
           width:28, height:28, borderRadius:'50%', flexShrink:0,
           border:`2px solid ${isDone ? color : isPending ? 'var(--orange)' : 'var(--border)'}`,
@@ -989,6 +1106,7 @@ function TasksScreen({ state, setState, activeKid }) {
   const week = state.weekKey;
   const tasks = state.tasks;
   const penaltyDefs = state.penaltyDefs || PENALTIES_DEF;
+  const [infoTask, setInfoTask] = useState(null);
 
   const toggle = useCallback((taskId) => {
     setState(prev => {
@@ -1000,6 +1118,16 @@ function TasksScreen({ state, setState, activeKid }) {
       saveState(next); return next;
     });
   }, [activeKid, week, setState]);
+
+  const handlePhotoChange = (taskId, photoData) => {
+    setState(prev => {
+      const photos = { ...(prev.taskPhotos || {}) };
+      if (photoData === null) { delete photos[taskId]; }
+      else { photos[taskId] = photoData; }
+      const next = { ...prev, taskPhotos: photos };
+      saveState(next); return next;
+    });
+  };
 
   const pts = getKidNetPts(state.completions, state.penalties, activeKid, week, tasks, penaltyDefs);
   const penaltyPts = getKidPenaltyPts(state.penalties, activeKid, week, penaltyDefs);
@@ -1038,9 +1166,21 @@ function TasksScreen({ state, setState, activeKid }) {
         const status = rawStatus===week+'_confirmed' ? 'confirmed' : rawStatus===week+'_pending' ? 'pending' : 'none';
         return (
           <TaskCard key={task.id} task={task} status={status} color={kid.color}
-            light={kid.light} mid={kid.mid} onToggle={toggle} idx={i}/>
+            light={kid.light} mid={kid.mid} onToggle={toggle}
+            onInfo={setInfoTask}
+            hasPhoto={!!(state.taskPhotos?.[task.id])}
+            idx={i}/>
         );
       })}
+
+      {infoTask && (
+        <TaskInfoModal
+          task={infoTask}
+          photo={state.taskPhotos?.[infoTask.id] || null}
+          onClose={()=>setInfoTask(null)}
+          onPhotoChange={(data)=>handlePhotoChange(infoTask.id, data)}
+        />
+      )}
 
       {activePenalties.length > 0 && (
         <div style={{marginTop:8, marginBottom:12}}>
@@ -1390,6 +1530,7 @@ function App() {
             ...raw,
             tasks: raw.tasks || TASKS_DEF,
             penaltyDefs: raw.penaltyDefs || PENALTIES_DEF,
+            taskPhotos: raw.taskPhotos || {},
             settings: { pin:'1234', prize1:'5', prize2:'2', bonus:'10', ...(raw.settings||{}) },
             completions: {
               daniil:  (raw.completions && raw.completions.daniil)  || {},
