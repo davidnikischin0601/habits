@@ -1306,17 +1306,17 @@ function TaskCard({ task, confirmed, pending, color, light, mid, onToggle, onInf
             </span>}
             {isPending ? ' · ⏳ Wartet auf Bestätigung' : isDone ? ' · ✓ Bestätigt' : ''}
           </div>
-        </div>
-        {onInfo && (
-          <button onClick={e=>{e.stopPropagation(); onInfo(task);}} style={{
-            width:30, height:30, borderRadius:'50%', border:'none',
-            background: hasInfo ? 'var(--d-light)' : 'var(--bg)',
-            color: hasInfo ? 'var(--d-color)' : 'var(--text-3)',
-            fontSize:15, cursor:'pointer', flexShrink:0,
-            display:'flex', alignItems:'center', justifyContent:'center',
-            transition:'all 0.2s',
-          }}>{hasInfo ? '🖼️' : 'ℹ️'}</button>
-        )}
+          {hasInfo && onInfo && (
+            <div onClick={e=>{e.stopPropagation(); onInfo(task);}} style={{
+              marginTop:7, display:'inline-flex', alignItems:'center', gap:5,
+              background:light, border:`1.5px solid ${mid}`,
+              borderRadius:10, padding:'5px 11px', cursor:'pointer',
+            }}>
+              <span style={{fontSize:14}}>📋</span>
+              <span style={{fontWeight:800, fontSize:12, color:color}}>Anleitung ansehen</span>
+            </div>
+          )}
+        </div>}
         <div style={{
           width:28, height:28, borderRadius:'50%', flexShrink:0,
           border:`2px solid ${isDone ? color : isPending ? 'var(--orange)' : 'var(--border)'}`,
