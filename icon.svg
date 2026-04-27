@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#F8F7F4"/>
+  <!-- house body -->
+  <polygon points="256,100 420,260 392,260 392,400 312,400 312,310 200,310 200,400 120,400 120,260 92,260" fill="oklch(65% 0.18 265)" rx="8"/>
+  <!-- roof highlight -->
+  <polygon points="256,100 420,260 380,260 256,150 132,260 92,260" fill="oklch(52% 0.22 265)" opacity="0.6"/>
+  <!-- star -->
+  <text x="256" y="380" text-anchor="middle" font-size="90" fill="#FFD700">★</text>
+</svg>
