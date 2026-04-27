@@ -128,15 +128,33 @@ function defaultState() {
     settings: { pin:'1234', prize1:'5', prize2:'2', bonus:'10' },
     tasks: TASKS_DEF,
     penaltyDefs: PENALTIES_DEF,
-    taskPhotos: {},
+    kidTaskData: { daniil:{}, viktoria:{} },
   };
 }
 function saveState(s) {
   fbRef.set(s);
 }
 
+// Returns {confirmed, pending} counts for a task completion value
+function getTaskStatus(val, weekKey) {
+  if (!val) return { confirmed:0, pending:0 };
+  if (typeof val === 'string') {
+    if (val === weekKey+'_confirmed') return { confirmed:1, pending:0 };
+    if (val === weekKey+'_pending')   return { confirmed:0, pending:1 };
+    return { confirmed:0, pending:0 };
+  }
+  if (typeof val === 'object' && val.week === weekKey)
+    return { confirmed: val.confirmed||0, pending: val.pending||0 };
+  return { confirmed:0, pending:0 };
+}
+function maxPtsFor(tasks) {
+  return tasks.reduce((s,t) => s + t.pts * (t.count||1), 0);
+}
 function getKidPts(completions, kidId, weekKey, tasks) {
-  return tasks.filter(t => completions[kidId]?.[t.id] === weekKey+'_confirmed').reduce((s,t)=>s+t.pts,0);
+  return tasks.reduce((s,t) => {
+    const { confirmed } = getTaskStatus(completions[kidId]?.[t.id], weekKey);
+    return s + confirmed * t.pts;
+  }, 0);
 }
 function getKidPenaltyPts(penalties, kidId, weekKey, penaltyDefs) {
   return (penaltyDefs||[]).filter(p => penalties?.[kidId]?.[p.id] === weekKey+'_confirmed').reduce((s,p)=>s+p.pts,0);
@@ -145,10 +163,13 @@ function getKidNetPts(completions, penalties, kidId, weekKey, tasks, penaltyDefs
   return Math.max(0, getKidPts(completions, kidId, weekKey, tasks) - getKidPenaltyPts(penalties, kidId, weekKey, penaltyDefs));
 }
 function getKidPending(completions, kidId, weekKey, tasks) {
-  return tasks.filter(t => completions[kidId]?.[t.id] === weekKey+'_pending');
+  return tasks.filter(t => getTaskStatus(completions[kidId]?.[t.id], weekKey).pending > 0);
 }
 function getKidConfirmed(completions, kidId, weekKey, tasks) {
-  return tasks.filter(t => completions[kidId]?.[t.id] === weekKey+'_confirmed');
+  return tasks.filter(t => {
+    const { confirmed } = getTaskStatus(completions[kidId]?.[t.id], weekKey);
+    return confirmed >= (t.count||1);
+  });
 }
 function getKidActivePenalties(penalties, kidId, weekKey, penaltyDefs) {
   return (penaltyDefs||[]).filter(p => penalties?.[kidId]?.[p.id] === weekKey+'_confirmed');
@@ -301,6 +322,8 @@ function PenaltyManager({ state, setState }) {
   const penaltyDefs = state.penaltyDefs || PENALTIES_DEF;
   const [customLabel, setCustomLabel] = useState({});
   const [customPts, setCustomPts] = useState({});
+  const [editId, setEditId] = useState(null);
+  const [editFields, setEditFields] = useState({});
 
   const togglePenalty = (kidId, penaltyId) => {
     setState(prev => {
@@ -309,6 +332,37 @@ function PenaltyManager({ state, setState }) {
       if (cur === week+'_confirmed') { delete kidPenalties[penaltyId]; }
       else { kidPenalties[penaltyId] = week+'_confirmed'; }
       const next = { ...prev, penalties: { ...(prev.penalties||{}), [kidId]: kidPenalties } };
+      saveState(next); return next;
+    });
+  };
+
+  const startEdit = (p) => {
+    setEditId(p.id);
+    setEditFields({ icon: p.icon, label: p.label, pts: String(p.pts) });
+  };
+
+  const saveEdit = () => {
+    setState(prev => {
+      const newDefs = (prev.penaltyDefs || PENALTIES_DEF).map(p =>
+        p.id === editId ? { ...p, icon: editFields.icon||p.icon, label: editFields.label||p.label, pts: Math.max(1,parseInt(editFields.pts)||p.pts) } : p
+      );
+      const next = { ...prev, penaltyDefs: newDefs };
+      saveState(next); return next;
+    });
+    setEditId(null);
+  };
+
+  const removePenalty = (penaltyId) => {
+    setState(prev => {
+      const newDefs = (prev.penaltyDefs || PENALTIES_DEF).filter(p => p.id !== penaltyId);
+      const penalties = { ...prev.penalties };
+      KIDS.forEach(k => {
+        if (penalties[k.id]) {
+          penalties[k.id] = { ...penalties[k.id] };
+          delete penalties[k.id][penaltyId];
+        }
+      });
+      const next = { ...prev, penaltyDefs: newDefs, penalties };
       saveState(next); return next;
     });
   };
@@ -329,21 +383,58 @@ function PenaltyManager({ state, setState }) {
     setCustomPts(prev => ({ ...prev, [kidId]: '' }));
   };
 
-  const removeCustomPenalty = (kidId, penaltyId) => {
-    setState(prev => {
-      const newDefs = (prev.penaltyDefs || PENALTIES_DEF).filter(p => p.id !== penaltyId);
-      const kidPenalties = { ...(prev.penalties?.[kidId] || {}) };
-      delete kidPenalties[penaltyId];
-      const next = { ...prev, penaltyDefs: newDefs, penalties: { ...(prev.penalties||{}), [kidId]: kidPenalties } };
-      saveState(next); return next;
-    });
-  };
+  const allDefs = penaltyDefs; // both standard and custom
 
   return (
     <div>
+      {/* All penalty definitions — editable */}
+      <div style={{fontWeight:800, fontSize:13, color:'var(--text)', marginBottom:8}}>⚡ Straf-Definitionen bearbeiten</div>
+      <div style={{background:'#fff', borderRadius:20, padding:'4px 0', boxShadow:'var(--shadow)', marginBottom:20}}>
+        {allDefs.map((p, i) => (
+          <div key={p.id}>
+            {editId === p.id ? (
+              <div style={{padding:'12px 14px', borderBottom: i<allDefs.length-1 ? '1px solid var(--border)':'none',
+                background:'#fffbeb'}}>
+                <div style={{display:'flex', gap:8, marginBottom:8}}>
+                  <input value={editFields.icon} onChange={e=>setEditFields(f=>({...f,icon:e.target.value}))} maxLength={2}
+                    style={{width:44, padding:'8px', borderRadius:10, border:'1.5px solid var(--border)', background:'var(--bg)',
+                      fontFamily:'Nunito', fontSize:20, textAlign:'center', outline:'none'}}/>
+                  <input value={editFields.label} onChange={e=>setEditFields(f=>({...f,label:e.target.value}))}
+                    style={{flex:1, padding:'8px 12px', borderRadius:10, border:'1.5px solid var(--border)', background:'var(--bg)',
+                      fontFamily:'Nunito', fontWeight:600, fontSize:13, color:'var(--text)', outline:'none'}}/>
+                  <input value={editFields.pts} onChange={e=>setEditFields(f=>({...f,pts:e.target.value.replace(/[^0-9]/g,'')}))}
+                    style={{width:44, padding:'8px', borderRadius:10, border:'1.5px solid var(--border)', background:'var(--bg)',
+                      fontFamily:'Nunito', fontWeight:800, fontSize:13, textAlign:'center', outline:'none'}}/>
+                </div>
+                <div style={{display:'flex', gap:8}}>
+                  <button onClick={saveEdit} style={{flex:1, padding:'8px', borderRadius:10, border:'none',
+                    background:'var(--green)', color:'#fff', fontFamily:'Nunito', fontWeight:800, fontSize:13, cursor:'pointer'}}>✓ Speichern</button>
+                  <button onClick={()=>setEditId(null)} style={{padding:'8px 14px', borderRadius:10,
+                    border:'1.5px solid var(--border)', background:'#fff', fontFamily:'Nunito', fontWeight:700, fontSize:13, cursor:'pointer'}}>Abbrechen</button>
+                </div>
+              </div>
+            ) : (
+              <div style={{display:'flex', alignItems:'center', gap:10, padding:'10px 14px',
+                borderBottom: i<allDefs.length-1 ? '1px solid var(--border)':'none'}}>
+                <span style={{fontSize:20, width:28, textAlign:'center', flexShrink:0}}>{p.icon}</span>
+                <div style={{flex:1, minWidth:0}}>
+                  <div style={{fontWeight:700, fontSize:13, color:'var(--text)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{p.label}</div>
+                  <div style={{fontWeight:600, fontSize:11, color:'#dc2626'}}>-{p.pts} Punkte{p.kidId ? ' (nur '+KIDS.find(k=>k.id===p.kidId)?.name+')' : ''}</div>
+                </div>
+                <button onClick={()=>startEdit(p)} style={{background:'var(--d-light)', border:'1.5px solid var(--d-mid)',
+                  borderRadius:8, width:28, height:28, cursor:'pointer', fontSize:13, flexShrink:0,
+                  display:'flex', alignItems:'center', justifyContent:'center'}}>✏️</button>
+                <button onClick={()=>removePenalty(p.id)} style={{background:'#fff5f5', border:'1.5px solid #fecaca',
+                  borderRadius:8, width:28, height:28, cursor:'pointer', fontSize:13, color:'#dc2626', flexShrink:0,
+                  display:'flex', alignItems:'center', justifyContent:'center'}}>🗑</button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Toggle per kid */}
       {KIDS.map(kid => {
-        const standardDefs = penaltyDefs.filter(p => !p.kidId);
-        const customDefs = penaltyDefs.filter(p => p.kidId === kid.id);
         const active = getKidActivePenalties(state.penalties, kid.id, week, penaltyDefs);
         const totalPts = active.reduce((s,p)=>s+p.pts,0);
         return (
@@ -351,13 +442,11 @@ function PenaltyManager({ state, setState }) {
             <div style={{display:'flex', alignItems:'center', gap:10, marginBottom:12}}>
               <div style={{width:36, height:36, borderRadius:'50%', background:kid.color,
                 display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, color:'#fff'}}>{kid.emoji}</div>
-              <div style={{fontWeight:800, fontSize:15, color:'var(--text)', flex:1}}>{kid.name}</div>
+              <div style={{fontWeight:800, fontSize:15, color:'var(--text)', flex:1}}>{kid.name} – Strafen aktivieren</div>
               {totalPts>0 && <div style={{fontWeight:900, fontSize:14, color:'#dc2626'}}>-{totalPts} P</div>}
             </div>
-
-            {/* Standard penalty toggles */}
             <div style={{display:'flex', flexDirection:'column', gap:8}}>
-              {standardDefs.map(p => {
+              {penaltyDefs.filter(p=>!p.kidId||p.kidId===kid.id).map(p => {
                 const isActive = state.penalties?.[kid.id]?.[p.id] === week+'_confirmed';
                 return (
                   <div key={p.id} onClick={()=>togglePenalty(kid.id, p.id)} style={{
@@ -371,41 +460,16 @@ function PenaltyManager({ state, setState }) {
                       <div style={{fontWeight:700, fontSize:13, color: isActive?'#7f1d1d':'var(--text)'}}>{p.label}</div>
                       <div style={{fontWeight:600, fontSize:11, color:'#dc2626'}}>-{p.pts} Punkte</div>
                     </div>
-                    <div style={{
-                      width:26, height:26, borderRadius:'50%', flexShrink:0,
+                    <div style={{width:26, height:26, borderRadius:'50%', flexShrink:0,
                       background: isActive ? '#dc2626' : 'var(--bg)',
                       border: `2px solid ${isActive ? '#dc2626' : 'var(--border)'}`,
-                      display:'flex', alignItems:'center', justifyContent:'center',
-                    }}>
+                      display:'flex', alignItems:'center', justifyContent:'center'}}>
                       {isActive && <span style={{color:'#fff', fontSize:13, fontWeight:900}}>✓</span>}
                     </div>
                   </div>
                 );
               })}
             </div>
-
-            {/* Custom (manual) penalties already added for this kid */}
-            {customDefs.length > 0 && (
-              <div style={{display:'flex', flexDirection:'column', gap:8, marginTop:8}}>
-                {customDefs.map(p => (
-                  <div key={p.id} style={{
-                    display:'flex', alignItems:'center', gap:12, padding:'12px 14px',
-                    borderRadius:16, background:'#fee2e2', border:'1.5px solid #fca5a5',
-                  }}>
-                    <span style={{fontSize:20}}>⚡</span>
-                    <div style={{flex:1}}>
-                      <div style={{fontWeight:700, fontSize:13, color:'#7f1d1d'}}>{p.label}</div>
-                      <div style={{fontWeight:600, fontSize:11, color:'#dc2626'}}>-{p.pts} Punkte (manuell)</div>
-                    </div>
-                    <button onClick={()=>removeCustomPenalty(kid.id, p.id)} style={{
-                      background:'#dc2626', border:'none', borderRadius:'50%', width:26, height:26,
-                      color:'#fff', fontSize:14, fontWeight:900, cursor:'pointer', flexShrink:0,
-                      display:'flex', alignItems:'center', justifyContent:'center',
-                    }}>✕</button>
-                  </div>
-                ))}
-              </div>
-            )}
 
             {/* Form to add a manual penalty */}
             <div style={{marginTop:10, padding:'12px 14px', background:'#fff7ed',
@@ -422,9 +486,9 @@ function PenaltyManager({ state, setState }) {
               />
               <div style={{display:'flex', gap:8}}>
                 <input
-                  type="number" min="1" placeholder="Punkte"
+                  type="text" inputMode="numeric" placeholder="Punkte"
                   value={customPts[kid.id] || ''}
-                  onChange={e => setCustomPts(prev => ({ ...prev, [kid.id]: e.target.value }))}
+                  onChange={e => setCustomPts(prev => ({ ...prev, [kid.id]: e.target.value.replace(/[^0-9]/g,'') }))}
                   onKeyDown={e => e.key==='Enter' && addCustomPenalty(kid.id)}
                   style={{width:90, padding:'9px 12px', borderRadius:10, border:'1.5px solid #fed7aa',
                     fontFamily:'Nunito', fontSize:13, fontWeight:700, outline:'none', background:'#fff', color:'var(--text)'}}
@@ -452,20 +516,26 @@ function TaskManager({ state, setState }) {
   const [localPts, setLocalPts] = useState({});
   const tasks = state.tasks;
 
-  const getPhotos = (taskId) => {
-    const v = state.taskPhotos?.[taskId];
-    if (!v) return [];
-    return Array.isArray(v) ? v : [v];
+  const [count, setCount] = useState('1');
+  const [localCount, setLocalCount] = useState({});
+
+  const hasInfo = (taskId) => {
+    const ktd = state.kidTaskData || {};
+    return KIDS.some(k => {
+      const d = ktd[k.id]?.[taskId];
+      return !!(d?.notes || '').trim() || (d?.photos || []).length > 0;
+    });
   };
 
   const addTask = () => {
     if(!label.trim()) return;
-    const newTask = { id: 'custom_' + Date.now(), icon: icon.trim() || '⭐', label: label.trim(), pts: Math.max(1, parseInt(pts)||5) };
+    const taskCount = Math.max(1, parseInt(count)||1);
+    const newTask = { id: 'custom_' + Date.now(), icon: icon.trim() || '⭐', label: label.trim(), pts: Math.max(1, parseInt(pts)||5), count: taskCount };
     setState(prev => {
       const next = { ...prev, tasks: [...prev.tasks, newTask] };
       saveState(next); return next;
     });
-    setLabel(''); setPts('5'); setIcon('⭐');
+    setLabel(''); setPts('5'); setIcon('⭐'); setCount('1');
     setSaved(true); setTimeout(() => setSaved(false), 1500);
   };
 
@@ -487,13 +557,31 @@ function TaskManager({ state, setState }) {
     setLocalPts(p => { const n={...p}; delete n[id]; return n; });
   };
 
-  const handleEditSave = (taskId, { notes, photos }) => {
+  const commitCount = (id) => {
+    const raw = localCount[id];
+    if (raw === undefined) return;
+    const num = Math.max(1, parseInt(raw) || 1);
     setState(prev => {
-      const tasks = prev.tasks.map(t => t.id===taskId ? {...t, notes} : t);
-      const taskPhotos = { ...(prev.taskPhotos||{}) };
-      if (photos.length===0) { delete taskPhotos[taskId]; }
-      else { taskPhotos[taskId] = photos; }
-      const next = { ...prev, tasks, taskPhotos };
+      const next = { ...prev, tasks: prev.tasks.map(t => t.id===id ? {...t, count: num} : t) };
+      saveState(next); return next;
+    });
+    setLocalCount(p => { const n={...p}; delete n[id]; return n; });
+  };
+
+  const handleEditSave = (taskId, kidData) => {
+    setState(prev => {
+      const ktd = { ...(prev.kidTaskData || { daniil:{}, viktoria:{} }) };
+      KIDS.forEach(k => {
+        const d = kidData[k.id] || { notes:'', photos:[] };
+        if (!ktd[k.id]) ktd[k.id] = {};
+        if ((d.notes||'').trim() || (d.photos||[]).length > 0) {
+          ktd[k.id] = { ...ktd[k.id], [taskId]: { notes: d.notes||'', photos: d.photos||[] } };
+        } else {
+          ktd[k.id] = { ...ktd[k.id] };
+          delete ktd[k.id][taskId];
+        }
+      });
+      const next = { ...prev, kidTaskData: ktd };
       saveState(next); return next;
     });
     setEditTask(null);
@@ -504,7 +592,7 @@ function TaskManager({ state, setState }) {
       {editTask && (
         <TaskEditModal
           task={editTask}
-          photos={getPhotos(editTask.id)}
+          kidTaskData={state.kidTaskData}
           onClose={()=>setEditTask(null)}
           onSave={(data)=>handleEditSave(editTask.id, data)}
         />
@@ -522,19 +610,30 @@ function TaskManager({ state, setState }) {
               <div style={{flex:1, minWidth:0}}>
                 <div style={{fontWeight:700, fontSize:13, color:'var(--text)', whiteSpace:'nowrap',
                   overflow:'hidden', textOverflow:'ellipsis'}}>{task.label}</div>
-                {hasInfo && <div style={{fontSize:10, fontWeight:600, color:'var(--d-color)', marginTop:1}}>
-                  {task.notes?.trim() ? '📝' : ''}{getPhotos(task.id).length>0 ? ' 📷' : ''}
-                </div>}
+                <div style={{display:'flex', alignItems:'center', gap:4, marginTop:1}}>
+                  {(task.count||1) > 1 && <span style={{fontSize:10, fontWeight:800, color:'#fff', background:'var(--d-color)', borderRadius:6, padding:'1px 5px'}}>{task.count}×</span>}
+                  {hasInfo(task.id) && <span style={{fontSize:10, fontWeight:600, color:'var(--d-color)'}}>📝📷</span>}
+                </div>
               </div>
               <input
                 type="text" inputMode="numeric" value={displayPts}
                 onChange={e=>setLocalPts(p=>({...p,[task.id]:e.target.value.replace(/[^0-9]/g,'')}))}
                 onBlur={()=>commitPts(task.id)}
                 onKeyDown={e=>e.key==='Enter'&&commitPts(task.id)}
-                style={{width:46, border:'1.5px solid var(--border)', borderRadius:8, padding:'4px 6px',
-                  fontFamily:'Nunito', fontWeight:800, fontSize:13, color:'var(--text)',
+                style={{width:40, border:'1.5px solid var(--border)', borderRadius:8, padding:'4px 4px',
+                  fontFamily:'Nunito', fontWeight:800, fontSize:12, color:'var(--text)',
                   textAlign:'center', outline:'none', background:'var(--bg)', flexShrink:0}}/>
               <span style={{fontSize:11, fontWeight:600, color:'var(--text-3)', flexShrink:0}}>P</span>
+              <input
+                type="text" inputMode="numeric"
+                value={task.id in localCount ? localCount[task.id] : String(task.count||1)}
+                onChange={e=>setLocalCount(p=>({...p,[task.id]:e.target.value.replace(/[^0-9]/g,'')}))}
+                onBlur={()=>commitCount(task.id)}
+                onKeyDown={e=>e.key==='Enter'&&commitCount(task.id)}
+                style={{width:28, border:'1.5px solid var(--border)', borderRadius:8, padding:'4px 2px',
+                  fontFamily:'Nunito', fontWeight:800, fontSize:12, color:'var(--text)',
+                  textAlign:'center', outline:'none', background:'var(--bg)', flexShrink:0}}/>
+              <span style={{fontSize:11, fontWeight:600, color:'var(--text-3)', flexShrink:0}}>×</span>
               <button onClick={()=>setEditTask(task)} style={{
                 background:'var(--d-light)', border:'1.5px solid var(--d-mid)', borderRadius:8,
                 width:30, height:30, cursor:'pointer', fontSize:14, flexShrink:0,
@@ -584,12 +683,19 @@ function TaskManager({ state, setState }) {
             }}/>
         </div>
         <div style={{display:'flex', gap:8}}>
-          <div style={{display:'flex', alignItems:'center', gap:6, background:'var(--bg)', borderRadius:12, padding:'0 12px', border:'1.5px solid var(--border)'}}>
+          <div style={{display:'flex', alignItems:'center', gap:4, background:'var(--bg)', borderRadius:12, padding:'0 10px', border:'1.5px solid var(--border)'}}>
             <input type="text" inputMode="numeric" value={pts}
               onChange={e=>setPts(e.target.value.replace(/[^0-9]/g,''))}
-              style={{width:44, border:'none', background:'transparent', fontFamily:'Nunito',
-                fontWeight:800, fontSize:16, color:'var(--text)', textAlign:'center', outline:'none'}}/>
-            <span style={{fontWeight:600, fontSize:13, color:'var(--text-3)'}}>Punkte</span>
+              style={{width:36, border:'none', background:'transparent', fontFamily:'Nunito',
+                fontWeight:800, fontSize:15, color:'var(--text)', textAlign:'center', outline:'none'}}/>
+            <span style={{fontWeight:600, fontSize:12, color:'var(--text-3)'}}>Pkt.</span>
+          </div>
+          <div style={{display:'flex', alignItems:'center', gap:4, background:'var(--bg)', borderRadius:12, padding:'0 10px', border:'1.5px solid var(--border)'}}>
+            <input type="text" inputMode="numeric" value={count}
+              onChange={e=>setCount(e.target.value.replace(/[^0-9]/g,''))}
+              style={{width:28, border:'none', background:'transparent', fontFamily:'Nunito',
+                fontWeight:800, fontSize:15, color:'var(--text)', textAlign:'center', outline:'none'}}/>
+            <span style={{fontWeight:600, fontSize:12, color:'var(--text-3)'}}>×</span>
           </div>
           <button onClick={addTask} style={{
             flex:1, padding:'10px', borderRadius:12, border:'none',
@@ -610,14 +716,25 @@ function ParentScreen({ state, setState, onClose }) {
   const [tab, setTab] = useState('pending');
 
   const allPending = KIDS.flatMap(k =>
-    getKidPending(state.completions, k.id, week, tasks).map(t => ({...t, kid: k}))
+    getKidPending(state.completions, k.id, week, tasks).map(t => {
+      const { pending } = getTaskStatus(state.completions[k.id]?.[t.id], week);
+      return {...t, kid: k, pendingCount: pending || 1};
+    })
   );
 
   const confirm = (kidId, taskId, e) => {
     const rect = e.currentTarget.getBoundingClientRect();
     setConfettis(c => [...c, { id: Date.now()+taskId, x: rect.left+rect.width/2, y: rect.top, color: KIDS.find(k=>k.id===kidId).color }]);
     setState(prev => {
-      const comp = { ...prev.completions[kidId], [taskId]: week+'_confirmed' };
+      const task = prev.tasks.find(t => t.id === taskId);
+      const count = task?.count || 1;
+      const comp = { ...prev.completions[kidId] };
+      if (count === 1) {
+        comp[taskId] = week+'_confirmed';
+      } else {
+        const { confirmed: c, pending: p } = getTaskStatus(comp[taskId], week);
+        if (p > 0) comp[taskId] = { week, confirmed: c+1, pending: p-1 };
+      }
       const next = { ...prev, completions: { ...prev.completions, [kidId]: comp } };
       saveState(next); return next;
     });
@@ -625,8 +742,18 @@ function ParentScreen({ state, setState, onClose }) {
 
   const reject = (kidId, taskId) => {
     setState(prev => {
+      const task = prev.tasks.find(t => t.id === taskId);
+      const count = task?.count || 1;
       const comp = { ...prev.completions[kidId] };
-      delete comp[taskId];
+      if (count === 1) {
+        delete comp[taskId];
+      } else {
+        const { confirmed: c, pending: p } = getTaskStatus(comp[taskId], week);
+        if (p > 0) {
+          if (c === 0 && p === 1) delete comp[taskId];
+          else comp[taskId] = { week, confirmed: c, pending: p-1 };
+        }
+      }
       const next = { ...prev, completions: { ...prev.completions, [kidId]: comp } };
       saveState(next); return next;
     });
@@ -710,7 +837,7 @@ function ParentScreen({ state, setState, onClose }) {
                           <div style={{width:20, height:20, borderRadius:'50%', background:item.kid.color,
                             display:'flex', alignItems:'center', justifyContent:'center', fontSize:11}}>{item.kid.emoji}</div>
                           <span style={{fontWeight:700, fontSize:12, color:item.kid.color}}>{item.kid.name}</span>
-                          <span style={{fontWeight:600, fontSize:12, color:'var(--orange)'}}>· {item.pts} Punkte</span>
+                          <span style={{fontWeight:600, fontSize:12, color:'var(--orange)'}}>· {item.pts} Punkte{item.pendingCount > 1 ? ` · ${item.pendingCount}× offen` : ''}</span>
                         </div>
                       </div>
                     </div>
@@ -719,7 +846,7 @@ function ParentScreen({ state, setState, onClose }) {
                         flex:1, padding:'10px', borderRadius:14, border:'none',
                         background:'var(--green)', color:'#fff', fontFamily:'Nunito',
                         fontWeight:800, fontSize:14, cursor:'pointer',
-                      }}>✓ Bestätigen</button>
+                      }}>{item.pendingCount > 1 ? `✓ 1× (${item.pendingCount} offen)` : '✓ Bestätigen'}</button>
                       <button onClick={()=>reject(item.kid.id, item.id)} style={{
                         flex:1, padding:'10px', borderRadius:14, border:'1.5px solid var(--border)',
                         background:'#fff', color:'var(--text-2)', fontFamily:'Nunito',
@@ -753,7 +880,7 @@ function ParentScreen({ state, setState, onClose }) {
                     </div>
                   </div>
                   <div style={{marginTop:10, background:'var(--bg)', borderRadius:8, height:8, overflow:'hidden'}}>
-                    {(() => { const maxP = tasks.reduce((s,t)=>s+t.pts,0); return (
+                    {(() => { const maxP = maxPtsFor(tasks); return (
                       <div style={{height:'100%', background:k.color, borderRadius:8,
                         width:`${maxP>0?(k.pts/maxP)*100:0}%`, transition:'width 0.6s ease'}}/>
                     ); })()}
@@ -995,45 +1122,72 @@ function TaskInfoModal({ task, photos, onClose }) {
   );
 }
 
-// ── Task Edit Modal (parent mode) ─────────────────────────────
-function TaskEditModal({ task, photos, onClose, onSave }) {
+// ── Task Edit Modal (parent mode, per-kid data) ───────────────
+function TaskEditModal({ task, kidTaskData, onClose, onSave }) {
   const fileRef = useRef(null);
-  const [notes, setNotes] = useState(task.notes || '');
-  const [localPhotos, setLocalPhotos] = useState(photos);
+  const [activeTab, setActiveTab] = useState(KIDS[0].id);
   const [processing, setProcessing] = useState(false);
   const [preview, setPreview] = useState(null);
+
+  const initKid = (kidId) => {
+    const d = kidTaskData?.[kidId]?.[task.id] || {};
+    return { notes: d.notes || '', photos: d.photos || [] };
+  };
+  const [kidData, setKidData] = useState(() => ({
+    daniil: initKid('daniil'),
+    viktoria: initKid('viktoria'),
+  }));
+
+  const setKidField = (kidId, field, val) =>
+    setKidData(prev => ({ ...prev, [kidId]: { ...prev[kidId], [field]: val } }));
 
   const handleFiles = async (e) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
     setProcessing(true);
-    const arr = [...localPhotos];
+    const arr = [...kidData[activeTab].photos];
     for (const file of files) { arr.push(await compressImage(file)); }
-    setLocalPhotos(arr);
+    setKidField(activeTab, 'photos', arr);
     setProcessing(false);
     e.target.value = '';
   };
+
+  const cur = kidData[activeTab];
+  const curKid = KIDS.find(k => k.id === activeTab);
 
   return (
     <div style={{
       position:'fixed', inset:0, background:'rgba(0,0,0,0.6)', zIndex:700,
       display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'flex-end',
     }} onClick={onClose}>
-      {preview !== null && <PhotoPreview src={localPhotos[preview]} onClose={()=>setPreview(null)}/>}
+      {preview !== null && <PhotoPreview src={cur.photos[preview]} onClose={()=>setPreview(null)}/>}
       <div onClick={e=>e.stopPropagation()} style={{
         background:'#fff', borderRadius:'28px 28px 0 0', width:'100%', maxWidth:480,
         padding:'24px 24px 0', animation:'slideUp 0.3s ease',
         maxHeight:'92vh', display:'flex', flexDirection:'column', overflow:'hidden',
       }}>
-        <div style={{display:'flex', alignItems:'center', gap:12, marginBottom:18, flexShrink:0}}>
+        <div style={{display:'flex', alignItems:'center', gap:12, marginBottom:14, flexShrink:0}}>
           <div style={{fontSize:28, width:48, height:48, borderRadius:14, background:'var(--d-light)',
             display:'flex', alignItems:'center', justifyContent:'center'}}>{task.icon}</div>
           <div style={{flex:1}}>
             <div style={{fontWeight:900, fontSize:17, color:'var(--text)'}}>{task.label}</div>
-            <div style={{fontWeight:600, fontSize:12, color:'var(--text-3)', marginTop:2}}>Aufgabe bearbeiten</div>
+            <div style={{fontWeight:600, fontSize:12, color:'var(--text-3)', marginTop:2}}>Infos & Fotos pro Kind</div>
           </div>
           <button onClick={onClose} style={{width:36, height:36, borderRadius:12, border:'none',
             background:'var(--bg)', fontSize:18, cursor:'pointer', color:'var(--text-2)', fontWeight:700}}>✕</button>
+        </div>
+
+        {/* Kid tabs */}
+        <div style={{display:'flex', gap:8, marginBottom:16, flexShrink:0}}>
+          {KIDS.map(k => (
+            <button key={k.id} onClick={()=>setActiveTab(k.id)} style={{
+              flex:1, padding:'10px', borderRadius:14, border:'none', fontFamily:'Nunito',
+              fontWeight:800, fontSize:14, cursor:'pointer', transition:'all 0.2s',
+              background: activeTab===k.id ? k.color : 'var(--bg)',
+              color: activeTab===k.id ? '#fff' : 'var(--text-2)',
+              boxShadow: activeTab===k.id ? `0 4px 12px ${k.color}44` : 'none',
+            }}>{k.emoji} {k.name}</button>
+          ))}
         </div>
 
         <div style={{flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch',
@@ -1041,65 +1195,61 @@ function TaskEditModal({ task, photos, onClose, onSave }) {
 
           {/* Notes */}
           <div style={{marginBottom:20}}>
-            <div style={{fontWeight:800, fontSize:13, color:'var(--text)', marginBottom:4}}>📝 Beschreibung / Stichpunkte</div>
-            <div style={{fontWeight:600, fontSize:11, color:'var(--text-3)', marginBottom:8}}>Jede Zeile = ein Stichpunkt für die Kinder</div>
+            <div style={{fontWeight:800, fontSize:13, color:'var(--text)', marginBottom:4}}>
+              📝 Stichpunkte für {curKid.name}
+            </div>
+            <div style={{fontWeight:600, fontSize:11, color:'var(--text-3)', marginBottom:8}}>Jede Zeile = ein Stichpunkt</div>
             <textarea
-              value={notes}
-              onChange={e=>setNotes(e.target.value)}
-              placeholder={'z.B.:\nBett machen\nSchreibtisch aufräumen\nBoden fegen\nFenster schließen'}
+              value={cur.notes}
+              onChange={e=>setKidField(activeTab,'notes',e.target.value)}
+              placeholder={'z.B.:\nBett machen\nSchreibtisch aufräumen\nBoden fegen'}
               rows={5}
-              style={{
-                width:'100%', boxSizing:'border-box', padding:'12px 14px', borderRadius:14,
+              style={{width:'100%', boxSizing:'border-box', padding:'12px 14px', borderRadius:14,
                 border:'1.5px solid var(--border)', background:'var(--bg)',
                 fontFamily:'Nunito', fontWeight:600, fontSize:14, color:'var(--text)',
-                outline:'none', resize:'none', lineHeight:1.6,
-              }}
+                outline:'none', resize:'none', lineHeight:1.6}}
             />
           </div>
 
           {/* Photos */}
           <div style={{marginBottom:20}}>
             <div style={{fontWeight:800, fontSize:13, color:'var(--text)', marginBottom:8}}>
-              📷 Referenzfotos
-              {localPhotos.length > 0 && <span style={{marginLeft:6, background:'var(--d-light)',
+              📷 Referenzfotos für {curKid.name}
+              {cur.photos.length > 0 && <span style={{marginLeft:6, background:'var(--d-light)',
                 color:'var(--d-color)', borderRadius:8, padding:'1px 7px', fontWeight:800, fontSize:12}}>
-                {localPhotos.length}
+                {cur.photos.length}
               </span>}
             </div>
-            {localPhotos.length > 0 && (
+            {cur.photos.length > 0 && (
               <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:10}}>
-                {localPhotos.map((src, i) => (
+                {cur.photos.map((src, i) => (
                   <div key={i} style={{position:'relative', borderRadius:14, overflow:'hidden',
                     boxShadow:'var(--shadow)', aspectRatio:'4/3'}}>
                     <img src={src} onClick={()=>setPreview(i)} style={{
-                      width:'100%', height:'100%', objectFit:'cover', display:'block', cursor:'pointer',
-                    }}/>
-                    <button onClick={()=>setLocalPhotos(p=>p.filter((_,j)=>j!==i))} style={{
+                      width:'100%', height:'100%', objectFit:'cover', display:'block', cursor:'pointer'}}/>
+                    <button onClick={()=>setKidField(activeTab,'photos',cur.photos.filter((_,j)=>j!==i))} style={{
                       position:'absolute', top:6, right:6, width:26, height:26,
                       borderRadius:'50%', border:'none', background:'rgba(0,0,0,0.55)',
                       color:'#fff', fontSize:13, cursor:'pointer', fontWeight:900,
-                      display:'flex', alignItems:'center', justifyContent:'center',
-                    }}>✕</button>
+                      display:'flex', alignItems:'center', justifyContent:'center'}}>✕</button>
                   </div>
                 ))}
               </div>
             )}
             <input ref={fileRef} type="file" accept="image/*" multiple onChange={handleFiles} style={{display:'none'}}/>
             <button onClick={()=>fileRef.current?.click()} disabled={processing} style={{
-              width:'100%', padding:'12px', borderRadius:14,
-              border:'1.5px dashed var(--border)', background:'#fff',
-              color: processing ? 'var(--text-3)' : 'var(--d-color)',
-              fontFamily:'Nunito', fontWeight:700, fontSize:14, cursor:'pointer', marginBottom:0,
-            }}>
-              {processing ? '⏳ Wird verarbeitet…' : localPhotos.length > 0 ? '+ Weitere Fotos' : '📷 Fotos hinzufügen'}
+              width:'100%', padding:'12px', borderRadius:14, border:'1.5px dashed var(--border)',
+              background:'#fff', color: processing ? 'var(--text-3)' : 'var(--d-color)',
+              fontFamily:'Nunito', fontWeight:700, fontSize:14, cursor:'pointer', marginBottom:0}}>
+              {processing ? '⏳ Wird verarbeitet…' : cur.photos.length > 0 ? '+ Weitere Fotos' : '📷 Fotos hinzufügen'}
             </button>
           </div>
 
-          <button onClick={()=>onSave({notes, photos:localPhotos})} style={{
+          <button onClick={()=>onSave(kidData)} style={{
             width:'100%', padding:'14px', borderRadius:16, border:'none',
-            background:'var(--d-color)', color:'#fff',
+            background: curKid.color, color:'#fff',
             fontFamily:'Nunito', fontWeight:800, fontSize:15, cursor:'pointer',
-          }}>✓ Speichern</button>
+          }}>✓ Für alle Kinder speichern</button>
         </div>
       </div>
     </div>
@@ -1107,14 +1257,17 @@ function TaskEditModal({ task, photos, onClose, onSave }) {
 }
 
 // ── TaskCard ──────────────────────────────────────────────────
-function TaskCard({ task, status, color, light, mid, onToggle, onInfo, hasPhoto, idx }) {
+function TaskCard({ task, confirmed, pending, color, light, mid, onToggle, onInfo, hasInfo, idx }) {
   const [floating, setFloating] = useState(false);
   const [confettiPos, setConfettiPos] = useState(null);
   const ref = useRef(null);
+  const count = task.count || 1;
+  const isDone = confirmed >= count;
+  const isPending = pending > 0 && !isDone;
 
   const handle = () => {
-    if(status !== 'confirmed') {
-      if(status !== 'pending') {
+    if (!isDone) {
+      if (pending === 0) {
         const rect = ref.current?.getBoundingClientRect();
         if(rect) setConfettiPos({x:rect.left+rect.width/2, y:rect.top+rect.height/2});
         setFloating(true); setTimeout(()=>setFloating(false),1000);
@@ -1122,8 +1275,6 @@ function TaskCard({ task, status, color, light, mid, onToggle, onInfo, hasPhoto,
       onToggle(task.id);
     }
   };
-
-  const isPending = status==='pending', isDone = status==='confirmed';
   const bgColor = isDone ? light : isPending ? 'var(--orange-light)' : '#fff';
   const borderColor = isDone ? mid : isPending ? 'var(--orange)' : 'var(--border)';
 
@@ -1149,18 +1300,23 @@ function TaskCard({ task, status, color, light, mid, onToggle, onInfo, hasPhoto,
           </div>
           <div style={{fontWeight:700, fontSize:12, marginTop:2,
             color: isDone ? color : isPending ? 'var(--orange)' : 'var(--text-3)'}}>
-            {task.pts} Punkte{isPending ? ' · ⏳ Wartet auf Bestätigung' : isDone ? ' · ✓ Bestätigt' : ''}
+            {task.pts} Punkte
+            {count > 1 && <span style={{marginLeft:6, background: isDone?color:isPending?'var(--orange)':'var(--bg)',
+              color: isDone||isPending?'#fff':'var(--text-3)', borderRadius:6, padding:'1px 5px', fontWeight:800, fontSize:11}}>
+              {confirmed}/{count}
+            </span>}
+            {isPending ? ' · ⏳ Wartet auf Bestätigung' : isDone ? ' · ✓ Bestätigt' : ''}
           </div>
         </div>
         {onInfo && (
           <button onClick={e=>{e.stopPropagation(); onInfo(task);}} style={{
             width:30, height:30, borderRadius:'50%', border:'none',
-            background: hasPhoto ? 'var(--d-light)' : 'var(--bg)',
-            color: hasPhoto ? 'var(--d-color)' : 'var(--text-3)',
+            background: hasInfo ? 'var(--d-light)' : 'var(--bg)',
+            color: hasInfo ? 'var(--d-color)' : 'var(--text-3)',
             fontSize:15, cursor:'pointer', flexShrink:0,
             display:'flex', alignItems:'center', justifyContent:'center',
             transition:'all 0.2s',
-          }}>{hasPhoto ? '🖼️' : 'ℹ️'}</button>
+          }}>{hasInfo ? '🖼️' : 'ℹ️'}</button>
         )}
         <div style={{
           width:28, height:28, borderRadius:'50%', flexShrink:0,
@@ -1181,7 +1337,7 @@ function HomeScreen({ state, activeKid, setActiveKid }) {
   const week = state.weekKey;
   const tasks = state.tasks;
   const penaltyDefs = state.penaltyDefs || PENALTIES_DEF;
-  const maxPts = tasks.reduce((s,t)=>s+t.pts,0);
+  const maxPts = maxPtsFor(tasks);
   const scores = KIDS.map(k => ({
     ...k,
     pts: getKidNetPts(state.completions, state.penalties, k.id, week, tasks, penaltyDefs),
@@ -1311,19 +1467,37 @@ function TasksScreen({ state, setState, activeKid }) {
 
   const toggle = useCallback((taskId) => {
     setState(prev => {
+      const task = prev.tasks.find(t => t.id === taskId);
+      const count = task?.count || 1;
       const comp = { ...prev.completions[activeKid] };
-      const cur = comp[taskId];
-      if(cur === week+'_pending') { delete comp[taskId]; }
-      else if(!cur) { comp[taskId] = week+'_pending'; }
+      const { confirmed, pending } = getTaskStatus(comp[taskId], week);
+      if (count === 1) {
+        if (pending > 0) { delete comp[taskId]; }
+        else if (confirmed === 0) { comp[taskId] = week+'_pending'; }
+      } else {
+        if (confirmed >= count) {
+          // fully done
+        } else if (confirmed + pending < count) {
+          comp[taskId] = { week, confirmed, pending: pending+1 };
+        } else if (pending > 0) {
+          const np = pending - 1;
+          if (confirmed === 0 && np === 0) delete comp[taskId];
+          else comp[taskId] = { week, confirmed, pending: np };
+        }
+      }
       const next = { ...prev, completions: { ...prev.completions, [activeKid]: comp } };
       saveState(next); return next;
     });
   }, [activeKid, week, setState]);
 
-  const getPhotos = (taskId) => {
-    const v = state.taskPhotos?.[taskId];
-    if (!v) return [];
-    return Array.isArray(v) ? v : [v];
+  const getKidTaskInfo = (taskId) => {
+    const d = state.kidTaskData?.[activeKid]?.[taskId];
+    return { notes: d?.notes || '', photos: d?.photos || [] };
+  };
+
+  const hasInfo = (taskId) => {
+    const d = state.kidTaskData?.[activeKid]?.[taskId];
+    return !!(d?.notes || '').trim() || (d?.photos || []).length > 0;
   };
 
   const pts = getKidNetPts(state.completions, state.penalties, activeKid, week, tasks, penaltyDefs);
@@ -1359,24 +1533,26 @@ function TasksScreen({ state, setState, activeKid }) {
 
       <div style={{fontWeight:800, fontSize:14, color:'var(--text)', marginBottom:12}}>Aufgaben dieser Woche</div>
       {tasks.map((task,i) => {
-        const rawStatus = state.completions[activeKid]?.[task.id];
-        const status = rawStatus===week+'_confirmed' ? 'confirmed' : rawStatus===week+'_pending' ? 'pending' : 'none';
+        const { confirmed, pending } = getTaskStatus(state.completions[activeKid]?.[task.id], week);
         return (
-          <TaskCard key={task.id} task={task} status={status} color={kid.color}
+          <TaskCard key={task.id} task={task} confirmed={confirmed} pending={pending} color={kid.color}
             light={kid.light} mid={kid.mid} onToggle={toggle}
             onInfo={setInfoTask}
-            hasPhoto={getPhotos(task.id).length > 0}
+            hasInfo={hasInfo(task.id)}
             idx={i}/>
         );
       })}
 
-      {infoTask && (
-        <TaskInfoModal
-          task={infoTask}
-          photos={getPhotos(infoTask.id)}
-          onClose={()=>setInfoTask(null)}
-        />
-      )}
+      {infoTask && (() => {
+        const { notes, photos } = getKidTaskInfo(infoTask.id);
+        return (
+          <TaskInfoModal
+            task={{...infoTask, notes}}
+            photos={photos}
+            onClose={()=>setInfoTask(null)}
+          />
+        );
+      })()}
 
       {activePenalties.length > 0 && (
         <div style={{marginTop:8, marginBottom:12}}>
@@ -1421,7 +1597,7 @@ function LeaderboardScreen({ state }) {
   const week = state.weekKey;
   const tasks = state.tasks;
   const penaltyDefs = state.penaltyDefs || PENALTIES_DEF;
-  const maxPts = tasks.reduce((s,t)=>s+t.pts,0);
+  const maxPts = maxPtsFor(tasks);
   const scores = KIDS.map(k=>({
     ...k,
     pts: getKidNetPts(state.completions, state.penalties, k.id, week, tasks, penaltyDefs),
@@ -1519,9 +1695,10 @@ function LeaderboardScreen({ state }) {
             </div>
             <div style={{display:'flex', gap:6}}>
               {KIDS.map(k=>{
-                const rawStatus = state.completions[k.id]?.[task.id];
-                const isConf = rawStatus===week+'_confirmed';
-                const isPend = rawStatus===week+'_pending';
+                const { confirmed: kConf, pending: kPend } = getTaskStatus(state.completions[k.id]?.[task.id], week);
+                const taskCount = task.count || 1;
+                const isConf = kConf >= taskCount;
+                const isPend = kPend > 0 && !isConf;
                 return (
                   <div key={k.id} style={{
                     width:28, height:28, borderRadius:'50%',
@@ -1531,6 +1708,7 @@ function LeaderboardScreen({ state }) {
                   }}>
                     {isConf ? <span style={{color:'#fff',fontWeight:900}}>✓</span>
                      : isPend ? <span>⏳</span>
+                     : taskCount > 1 && kConf > 0 ? <span style={{color:k.color,fontWeight:800,fontSize:9}}>{kConf}</span>
                      : <span style={{color:'var(--text-3)',fontWeight:700}}>{k.name[0]}</span>}
                   </div>
                 );
@@ -1726,7 +1904,7 @@ function App() {
             ...raw,
             tasks: raw.tasks || TASKS_DEF,
             penaltyDefs: raw.penaltyDefs || PENALTIES_DEF,
-            taskPhotos: raw.taskPhotos || {},
+            kidTaskData: raw.kidTaskData || { daniil:{}, viktoria:{} },
             settings: { pin:'1234', prize1:'5', prize2:'2', bonus:'10', ...(raw.settings||{}) },
             completions: {
               daniil:  (raw.completions && raw.completions.daniil)  || {},
