@@ -800,14 +800,8 @@ function ParentScreen({ state, setState, onClose }) {
 }
 
 // ── Task Info Modal ───────────────────────────────────────────
-function TaskInfoModal({ task, photo, onClose, onPhotoChange }) {
-  const fileRef = useRef(null);
-  const [processing, setProcessing] = useState(false);
-
-  const handleFile = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setProcessing(true);
+function compressImage(file) {
+  return new Promise((resolve) => {
     const reader = new FileReader();
     reader.onload = (ev) => {
       const img = new Image();
@@ -821,24 +815,40 @@ function TaskInfoModal({ task, photo, onClose, onPhotoChange }) {
         const canvas = document.createElement('canvas');
         canvas.width = w; canvas.height = h;
         canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-        const compressed = canvas.toDataURL('image/jpeg', 0.75);
-        onPhotoChange(compressed);
-        setProcessing(false);
+        resolve(canvas.toDataURL('image/jpeg', 0.75));
       };
       img.src = ev.target.result;
     };
     reader.readAsDataURL(file);
+  });
+}
+
+function TaskInfoModal({ task, photos, onClose, onPhotoAdd, onPhotoRemove }) {
+  const fileRef = useRef(null);
+  const [processing, setProcessing] = useState(false);
+  const [preview, setPreview] = useState(null);
+
+  const handleFiles = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    setProcessing(true);
+    for (const file of files) {
+      const compressed = await compressImage(file);
+      onPhotoAdd(compressed);
+    }
+    setProcessing(false);
+    e.target.value = '';
   };
 
   return (
     <div style={{
       position:'fixed', inset:0, background:'rgba(0,0,0,0.6)', zIndex:600,
       display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'flex-end',
-    }} onClick={onClose}>
+    }} onClick={preview ? ()=>setPreview(null) : onClose}>
       <div onClick={e=>e.stopPropagation()} style={{
         background:'#fff', borderRadius:'28px 28px 0 0', width:'100%', maxWidth:480,
         padding:'24px 24px 0', animation:'slideUp 0.3s ease',
-        maxHeight:'88vh', display:'flex', flexDirection:'column', overflow:'hidden',
+        maxHeight:'90vh', display:'flex', flexDirection:'column', overflow:'hidden',
       }}>
         {/* Header */}
         <div style={{display:'flex', alignItems:'center', gap:12, marginBottom:18, flexShrink:0}}>
@@ -848,7 +858,13 @@ function TaskInfoModal({ task, photo, onClose, onPhotoChange }) {
           </div>
           <div style={{flex:1}}>
             <div style={{fontWeight:900, fontSize:17, color:'var(--text)'}}>{task.label}</div>
-            <div style={{fontWeight:600, fontSize:12, color:'var(--text-3)', marginTop:2}}>Referenzfoto – So soll es aussehen</div>
+            <div style={{fontWeight:600, fontSize:12, color:'var(--text-3)', marginTop:2}}>
+              Referenzfotos – So soll es aussehen
+              {photos.length > 0 && <span style={{marginLeft:6, background:'var(--d-light)',
+                color:'var(--d-color)', borderRadius:8, padding:'1px 7px', fontWeight:800}}>
+                {photos.length}
+              </span>}
+            </div>
           </div>
           <button onClick={onClose} style={{
             width:36, height:36, borderRadius:12, border:'none',
@@ -860,12 +876,41 @@ function TaskInfoModal({ task, photo, onClose, onPhotoChange }) {
         {/* Scroll area */}
         <div style={{flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch',
           paddingBottom:'max(28px, env(safe-area-inset-bottom, 28px))'}}>
-          {photo ? (
-            <div style={{marginBottom:14}}>
-              <img src={photo} alt="Referenz" style={{
-                width:'100%', borderRadius:18, display:'block',
-                objectFit:'cover', maxHeight:340, boxShadow:'var(--shadow)',
+
+          {/* Fullscreen preview overlay */}
+          {preview !== null && (
+            <div onClick={()=>setPreview(null)} style={{
+              position:'fixed', inset:0, background:'rgba(0,0,0,0.92)', zIndex:700,
+              display:'flex', alignItems:'center', justifyContent:'center', padding:16,
+            }}>
+              <img src={photos[preview]} alt="" style={{
+                maxWidth:'100%', maxHeight:'100%', borderRadius:16, objectFit:'contain',
               }}/>
+              <button onClick={()=>setPreview(null)} style={{
+                position:'absolute', top:20, right:20, width:40, height:40,
+                borderRadius:'50%', border:'none', background:'rgba(255,255,255,0.15)',
+                color:'#fff', fontSize:20, cursor:'pointer',
+              }}>✕</button>
+            </div>
+          )}
+
+          {/* Photo grid */}
+          {photos.length > 0 ? (
+            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:14}}>
+              {photos.map((src, i) => (
+                <div key={i} style={{position:'relative', borderRadius:14, overflow:'hidden',
+                  boxShadow:'var(--shadow)', aspectRatio:'4/3'}}>
+                  <img src={src} alt={`Foto ${i+1}`} onClick={()=>setPreview(i)} style={{
+                    width:'100%', height:'100%', objectFit:'cover', display:'block', cursor:'pointer',
+                  }}/>
+                  <button onClick={()=>onPhotoRemove(i)} style={{
+                    position:'absolute', top:6, right:6, width:26, height:26,
+                    borderRadius:'50%', border:'none', background:'rgba(0,0,0,0.55)',
+                    color:'#fff', fontSize:13, cursor:'pointer', fontWeight:900,
+                    display:'flex', alignItems:'center', justifyContent:'center',
+                  }}>✕</button>
+                </div>
+              ))}
             </div>
           ) : (
             <div style={{
@@ -873,32 +918,23 @@ function TaskInfoModal({ task, photo, onClose, onPhotoChange }) {
               padding:'44px 20px', textAlign:'center', marginBottom:14,
             }}>
               <div style={{fontSize:44, marginBottom:10}}>📷</div>
-              <div style={{fontWeight:800, fontSize:15, color:'var(--text-2)'}}>Noch kein Foto vorhanden</div>
+              <div style={{fontWeight:800, fontSize:15, color:'var(--text-2)'}}>Noch keine Fotos vorhanden</div>
               <div style={{fontWeight:600, fontSize:12, color:'var(--text-3)', marginTop:5, lineHeight:1.5}}>
-                Lade ein Referenzfoto hoch,<br/>damit klar ist wie es aussehen soll
+                Lade Referenzfotos hoch,<br/>damit klar ist wie es aussehen soll
               </div>
             </div>
           )}
 
-          <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} style={{display:'none'}}/>
+          <input ref={fileRef} type="file" accept="image/*" multiple onChange={handleFiles} style={{display:'none'}}/>
 
           <button onClick={()=>fileRef.current?.click()} disabled={processing} style={{
             width:'100%', padding:'14px', borderRadius:16, border:'none',
             background: processing ? 'var(--border)' : 'var(--d-color)',
             color:'#fff', fontFamily:'Nunito', fontWeight:800, fontSize:15,
             cursor: processing ? 'default' : 'pointer', transition:'all 0.2s',
-            marginBottom:10,
           }}>
-            {processing ? '⏳ Wird verarbeitet…' : photo ? '📷 Foto ändern' : '📷 Foto hochladen'}
+            {processing ? '⏳ Wird verarbeitet…' : photos.length > 0 ? '📷 Weitere Fotos hinzufügen' : '📷 Fotos hochladen'}
           </button>
-
-          {photo && (
-            <button onClick={()=>onPhotoChange(null)} style={{
-              width:'100%', padding:'11px', borderRadius:16,
-              border:'1.5px solid #fecaca', background:'#fff5f5',
-              color:'#dc2626', fontFamily:'Nunito', fontWeight:700, fontSize:14, cursor:'pointer',
-            }}>🗑 Foto entfernen</button>
-          )}
         </div>
       </div>
     </div>
@@ -1119,12 +1155,30 @@ function TasksScreen({ state, setState, activeKid }) {
     });
   }, [activeKid, week, setState]);
 
-  const handlePhotoChange = (taskId, photoData) => {
+  const getPhotos = (taskId) => {
+    const v = state.taskPhotos?.[taskId];
+    if (!v) return [];
+    return Array.isArray(v) ? v : [v];
+  };
+
+  const handlePhotoAdd = (taskId, photoData) => {
     setState(prev => {
-      const photos = { ...(prev.taskPhotos || {}) };
-      if (photoData === null) { delete photos[taskId]; }
-      else { photos[taskId] = photoData; }
-      const next = { ...prev, taskPhotos: photos };
+      const cur = prev.taskPhotos?.[taskId];
+      const arr = Array.isArray(cur) ? cur : (cur ? [cur] : []);
+      const next = { ...prev, taskPhotos: { ...(prev.taskPhotos||{}), [taskId]: [...arr, photoData] } };
+      saveState(next); return next;
+    });
+  };
+
+  const handlePhotoRemove = (taskId, idx) => {
+    setState(prev => {
+      const cur = prev.taskPhotos?.[taskId];
+      const arr = Array.isArray(cur) ? cur : (cur ? [cur] : []);
+      const updated = arr.filter((_,i) => i !== idx);
+      const taskPhotos = { ...(prev.taskPhotos||{}) };
+      if (updated.length === 0) { delete taskPhotos[taskId]; }
+      else { taskPhotos[taskId] = updated; }
+      const next = { ...prev, taskPhotos };
       saveState(next); return next;
     });
   };
@@ -1168,7 +1222,7 @@ function TasksScreen({ state, setState, activeKid }) {
           <TaskCard key={task.id} task={task} status={status} color={kid.color}
             light={kid.light} mid={kid.mid} onToggle={toggle}
             onInfo={setInfoTask}
-            hasPhoto={!!(state.taskPhotos?.[task.id])}
+            hasPhoto={getPhotos(task.id).length > 0}
             idx={i}/>
         );
       })}
@@ -1176,9 +1230,10 @@ function TasksScreen({ state, setState, activeKid }) {
       {infoTask && (
         <TaskInfoModal
           task={infoTask}
-          photo={state.taskPhotos?.[infoTask.id] || null}
+          photos={getPhotos(infoTask.id)}
           onClose={()=>setInfoTask(null)}
-          onPhotoChange={(data)=>handlePhotoChange(infoTask.id, data)}
+          onPhotoAdd={(data)=>handlePhotoAdd(infoTask.id, data)}
+          onPhotoRemove={(idx)=>handlePhotoRemove(infoTask.id, idx)}
         />
       )}
 
