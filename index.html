@@ -1953,7 +1953,7 @@ function LoginScreen({ onLogin }) {
   const submit = (e) => {
     e && e.preventDefault();
     if(val === getAppPassword()) {
-      sessionStorage.setItem(APP_PW_KEY, '1');
+      localStorage.setItem(APP_PW_KEY, '1');
       onLogin();
     } else {
       setError(true);
@@ -2031,7 +2031,7 @@ function LoginScreen({ onLogin }) {
 
 // ── App ───────────────────────────────────────────────────────
 function App() {
-  const [loggedIn, setLoggedIn] = useState(() => sessionStorage.getItem(APP_PW_KEY) === '1');
+  const [loggedIn, setLoggedIn] = useState(() => localStorage.getItem(APP_PW_KEY) === '1');
   const [state, setStateRaw] = useState(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('home');
