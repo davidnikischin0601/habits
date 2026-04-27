@@ -1732,10 +1732,177 @@ function LeaderboardScreen({ state }) {
   );
 }
 
+// ── Calendar Screen ───────────────────────────────────────────
+function CalendarScreen({ state, activeKid }) {
+  const kid = KIDS.find(k => k.id === activeKid);
+  const week = state.weekKey;
+  const tasks = state.tasks;
+  const penaltyDefs = state.penaltyDefs || PENALTIES_DEF;
+
+  const [viewDate, setViewDate] = React.useState(new Date());
+
+  const today = new Date(); today.setHours(0,0,0,0);
+  const year = viewDate.getFullYear();
+  const month = viewDate.getMonth();
+
+  const [wy, wm, wd] = week.split('-').map(Number);
+  const weekStart = new Date(wy, wm-1, wd); weekStart.setHours(0,0,0,0);
+  const weekEnd = new Date(weekStart); weekEnd.setDate(weekEnd.getDate() + 6);
+
+  const firstDay = new Date(year, month, 1);
+  const lastDay = new Date(year, month+1, 0);
+  let startOffset = firstDay.getDay() - 1;
+  if (startOffset < 0) startOffset = 6;
+
+  const cells = [];
+  for (let i = 0; i < startOffset; i++) cells.push(null);
+  for (let d = 1; d <= lastDay.getDate(); d++) cells.push(new Date(year, month, d));
+
+  const isToday = (d) => d && d.getTime() === today.getTime();
+  const isInWeek = (d) => d && d >= weekStart && d <= weekEnd;
+
+  const pts = getKidNetPts(state.completions, state.penalties, activeKid, week, tasks, penaltyDefs);
+  const confirmedCount = getKidConfirmed(state.completions, activeKid, week, tasks).length;
+  const pendingCount = getKidPending(state.completions, activeKid, week, tasks).length;
+  const maxPts = maxPtsFor(tasks);
+
+  const monthNames = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+  const dayNames = ['Mo','Di','Mi','Do','Fr','Sa','So'];
+  const weekDayNames = ['Sonntag','Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag'];
+
+  return (
+    <div style={{padding:'0 20px 20px', animation:'fadeUp 0.4s ease'}}>
+
+      {/* Today banner */}
+      <div style={{
+        background:`linear-gradient(135deg, ${kid.color} 0%, ${kid.id==='daniil'?'oklch(52% 0.22 280)':'oklch(52% 0.22 355)'} 100%)`,
+        borderRadius:20, padding:'16px 20px', marginBottom:16, color:'#fff',
+        boxShadow:`0 6px 20px ${kid.color}44`,
+      }}>
+        <div style={{fontSize:12, fontWeight:700, opacity:0.8, marginBottom:2}}>{kid.emoji} Heute</div>
+        <div style={{fontSize:22, fontWeight:900, lineHeight:1.2}}>
+          {weekDayNames[today.getDay()]}, {today.getDate()}. {monthNames[today.getMonth()]} {today.getFullYear()}
+        </div>
+      </div>
+
+      {/* Month navigation */}
+      <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12,
+        background:'#fff', borderRadius:20, padding:'12px 16px', boxShadow:'var(--shadow)'}}>
+        <button onClick={()=>setViewDate(new Date(year, month-1, 1))} style={{
+          background:'var(--bg)', border:'none', borderRadius:10, width:36, height:36,
+          fontSize:20, cursor:'pointer', fontWeight:900, color:'var(--text-2)',
+        }}>‹</button>
+        <div style={{fontWeight:900, fontSize:16, color:'var(--text)'}}>{monthNames[month]} {year}</div>
+        <button onClick={()=>setViewDate(new Date(year, month+1, 1))} style={{
+          background:'var(--bg)', border:'none', borderRadius:10, width:36, height:36,
+          fontSize:20, cursor:'pointer', fontWeight:900, color:'var(--text-2)',
+        }}>›</button>
+      </div>
+
+      {/* Calendar grid */}
+      <div style={{background:'#fff', borderRadius:20, padding:'14px 12px', boxShadow:'var(--shadow)', marginBottom:16}}>
+        <div style={{display:'grid', gridTemplateColumns:'repeat(7, 1fr)', gap:3, marginBottom:6}}>
+          {dayNames.map(d => (
+            <div key={d} style={{textAlign:'center', fontSize:10, fontWeight:800, color:'var(--text-3)', padding:'3px 0'}}>{d}</div>
+          ))}
+        </div>
+        <div style={{display:'grid', gridTemplateColumns:'repeat(7, 1fr)', gap:3}}>
+          {cells.map((day, i) => {
+            const isTod = isToday(day);
+            const inWeek = isInWeek(day);
+            const isSat = day && day.getDay() === 6;
+            const isSun = day && day.getDay() === 0;
+            return (
+              <div key={i} style={{
+                aspectRatio:'1', display:'flex', alignItems:'center', justifyContent:'center',
+                borderRadius:10,
+                background: isTod ? kid.color : inWeek ? kid.light : 'transparent',
+                border: isTod ? `2px solid ${kid.color}` : inWeek ? `1.5px solid ${kid.mid}` : '1.5px solid transparent',
+                fontWeight: isTod ? 900 : inWeek ? 800 : 500,
+                fontSize: 13,
+                color: isTod ? '#fff' : inWeek ? kid.color : (isSat||isSun) ? 'var(--text-3)' : day ? 'var(--text)' : 'transparent',
+                boxShadow: isTod ? `0 4px 10px ${kid.color}55` : 'none',
+                transition:'all 0.2s',
+              }}>
+                {day ? day.getDate() : ''}
+              </div>
+            );
+          })}
+        </div>
+        <div style={{display:'flex', gap:12, marginTop:12, paddingTop:10, borderTop:'1px solid var(--border)'}}>
+          <div style={{display:'flex', alignItems:'center', gap:5}}>
+            <div style={{width:12, height:12, borderRadius:4, background:kid.color}}/>
+            <span style={{fontSize:10, fontWeight:700, color:'var(--text-3)'}}>Heute</span>
+          </div>
+          <div style={{display:'flex', alignItems:'center', gap:5}}>
+            <div style={{width:12, height:12, borderRadius:4, background:kid.light, border:`1.5px solid ${kid.mid}`}}/>
+            <span style={{fontSize:10, fontWeight:700, color:'var(--text-3)'}}>Diese Woche</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Week summary */}
+      <div style={{background:'#fff', borderRadius:20, padding:'16px 18px', boxShadow:'var(--shadow)', marginBottom:16}}>
+        <div style={{fontWeight:800, fontSize:14, color:'var(--text)', marginBottom:12}}>📊 Wochenstand – {kid.name}</div>
+        <div style={{display:'flex', gap:10, marginBottom:12}}>
+          <div style={{flex:1, background:kid.light, borderRadius:14, padding:'10px 8px', textAlign:'center', border:`1.5px solid ${kid.mid}`}}>
+            <div style={{fontSize:24, fontWeight:900, color:kid.color}}>{pts}</div>
+            <div style={{fontSize:10, fontWeight:700, color:'var(--text-3)', marginTop:2}}>Punkte</div>
+          </div>
+          <div style={{flex:1, background:'var(--green-light)', borderRadius:14, padding:'10px 8px', textAlign:'center', border:'1.5px solid var(--green)'}}>
+            <div style={{fontSize:24, fontWeight:900, color:'var(--green)'}}>{confirmedCount}</div>
+            <div style={{fontSize:10, fontWeight:700, color:'var(--text-3)', marginTop:2}}>bestätigt</div>
+          </div>
+          <div style={{flex:1, background:'var(--orange-light)', borderRadius:14, padding:'10px 8px', textAlign:'center', border:'1.5px solid var(--orange)'}}>
+            <div style={{fontSize:24, fontWeight:900, color:'var(--orange)'}}>{pendingCount}</div>
+            <div style={{fontSize:10, fontWeight:700, color:'var(--text-3)', marginTop:2}}>ausstehend</div>
+          </div>
+        </div>
+        <div style={{background:'var(--bg)', borderRadius:8, height:10, overflow:'hidden'}}>
+          <div style={{height:'100%', background:kid.color, borderRadius:8,
+            width:`${maxPts > 0 ? Math.min(100, (pts/maxPts)*100) : 0}%`, transition:'width 0.8s ease'}}/>
+        </div>
+        <div style={{fontSize:11, fontWeight:700, color:'var(--text-3)', marginTop:6, textAlign:'center'}}>
+          {pts} / {maxPts} Punkte · {maxPts > 0 ? Math.round((pts/maxPts)*100) : 0}% erreicht
+        </div>
+      </div>
+
+      {/* Week day strip */}
+      <div style={{background:'#fff', borderRadius:20, padding:'14px 16px', boxShadow:'var(--shadow)'}}>
+        <div style={{fontWeight:800, fontSize:13, color:'var(--text)', marginBottom:12}}>📅 Wochenübersicht</div>
+        <div style={{display:'flex', justifyContent:'space-between'}}>
+          {['Mo','Di','Mi','Do','Fr','Sa','So'].map((d,i) => {
+            const dayDate = new Date(weekStart); dayDate.setDate(weekStart.getDate() + i);
+            const isTod = dayDate.getTime() === today.getTime();
+            const isPast = dayDate < today;
+            return (
+              <div key={d} style={{display:'flex', flexDirection:'column', alignItems:'center', gap:4}}>
+                <div style={{fontSize:10, fontWeight:800, color: isTod ? kid.color : 'var(--text-3)'}}>{d}</div>
+                <div style={{
+                  width:32, height:32, borderRadius:'50%',
+                  background: isTod ? kid.color : isPast ? kid.light : 'var(--bg)',
+                  border:`2px solid ${isTod ? kid.color : isPast ? kid.mid : 'var(--border)'}`,
+                  display:'flex', alignItems:'center', justifyContent:'center', fontSize:12,
+                  boxShadow: isTod ? `0 4px 10px ${kid.color}44` : 'none',
+                }}>
+                  {isTod ? '👟' : isPast ? '✓' : ''}
+                </div>
+                <div style={{fontSize:9, fontWeight:700, color:'var(--text-3)'}}>
+                  {dayDate.getDate()}.
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Bottom Nav ────────────────────────────────────────────────
 function BottomNav({ tab, setTab, activeKid }) {
   const kid = KIDS.find(k=>k.id===activeKid);
-  const items = [{id:'home',icon:'🏠',label:'Übersicht'},{id:'tasks',icon:'✅',label:'Aufgaben'},{id:'rank',icon:'🏆',label:'Rangliste'}];
+  const items = [{id:'home',icon:'🏠',label:'Übersicht'},{id:'tasks',icon:'✅',label:'Aufgaben'},{id:'rank',icon:'🏆',label:'Rangliste'},{id:'calendar',icon:'📅',label:'Kalender'}];
   return (
     <div style={{
       background:'#fff', borderTop:'1px solid var(--border)',
@@ -1965,8 +2132,16 @@ function App() {
         paddingTop:'max(8px, env(safe-area-inset-top, 8px))',
         flexShrink:0,
       }}>
-        <div style={{fontWeight:900, fontSize:18, color:'var(--text)'}}>
-          {{home:'Übersicht',tasks:'Aufgaben',rank:'Rangliste'}[tab]}
+        <div>
+          <div style={{fontWeight:900, fontSize:18, color:'var(--text)'}}>
+            {{home:'Übersicht',tasks:'Aufgaben',rank:'Rangliste',calendar:'Kalender'}[tab]}
+          </div>
+          {(() => {
+            const n = new Date();
+            const wdn = ['So','Mo','Di','Mi','Do','Fr','Sa'][n.getDay()];
+            const mn = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'][n.getMonth()];
+            return <div style={{fontSize:11, fontWeight:700, color:'var(--text-3)', marginTop:1}}>{wdn}, {n.getDate()}. {mn}</div>;
+          })()}
         </div>
         <div style={{display:'flex', gap:8, alignItems:'center'}}>
           {tab!=='rank' && KIDS.map(k=>(
@@ -1997,9 +2172,10 @@ function App() {
       </div>
 
       <div style={{flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch'}}>
-        {tab==='home'  && <HomeScreen  state={state} activeKid={activeKid} setActiveKid={setActiveKid}/>}
-        {tab==='tasks' && <TasksScreen state={state} setState={setState} activeKid={activeKid}/>}
-        {tab==='rank'  && <LeaderboardScreen state={state}/>}
+        {tab==='home'     && <HomeScreen  state={state} activeKid={activeKid} setActiveKid={setActiveKid}/>}
+        {tab==='tasks'    && <TasksScreen state={state} setState={setState} activeKid={activeKid}/>}
+        {tab==='rank'     && <LeaderboardScreen state={state}/>}
+        {tab==='calendar' && <CalendarScreen state={state} activeKid={activeKid}/>}
       </div>
 
       <BottomNav tab={tab} setTab={setTab} activeKid={activeKid}/>
