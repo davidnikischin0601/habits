@@ -1494,13 +1494,21 @@ function TasksScreen({ state, setState, activeKid }) {
   }, [activeKid, week, setState]);
 
   const getKidTaskInfo = (taskId) => {
-    const d = state.kidTaskData?.[activeKid]?.[taskId];
-    return { notes: d?.notes || '', photos: d?.photos || [] };
+    // Eigene Daten bevorzugen, sonst auf anderes Kind zurückfallen
+    for (const kid of [activeKid, ...KIDS.map(k => k.id).filter(id => id !== activeKid)]) {
+      const d = state.kidTaskData?.[kid]?.[taskId];
+      if ((d?.notes || '').trim() || (d?.photos || []).length > 0)
+        return { notes: d?.notes || '', photos: d?.photos || [] };
+    }
+    return { notes: '', photos: [] };
   };
 
   const hasInfo = (taskId) => {
-    const d = state.kidTaskData?.[activeKid]?.[taskId];
-    return !!(d?.notes || '').trim() || (d?.photos || []).length > 0;
+    // Button zeigen wenn irgendein Kind Notizen/Fotos hat
+    return KIDS.some(k => {
+      const d = state.kidTaskData?.[k.id]?.[taskId];
+      return !!(d?.notes || '').trim() || (d?.photos || []).length > 0;
+    });
   };
 
   const pts = getKidNetPts(state.completions, state.penalties, activeKid, week, tasks, penaltyDefs);
