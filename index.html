@@ -980,6 +980,58 @@ function ParentScreen({ state, setState, onClose }) {
               <AppPasswordChanger/>
             </div>
 
+            <div style={{fontWeight:800, fontSize:14, color:'var(--text)', marginBottom:12}}>🔔 Erinnerungen</div>
+            <div style={{background:'#fff', borderRadius:20, padding:'18px', boxShadow:'var(--shadow)', marginBottom:20}}>
+              <div style={{fontWeight:600, fontSize:13, color:'var(--text-2)', marginBottom:6}}>
+                Tägliche Erinnerung + Zahl auf dem App-Icon
+              </div>
+              <div style={{fontWeight:600, fontSize:11, color:'var(--text-3)', marginBottom:14}}>
+                Zeigt wie viele Aufgaben noch offen sind — einmal täglich als Benachrichtigung (7–21 Uhr)
+              </div>
+              {(() => {
+                const perm = typeof Notification !== 'undefined' ? Notification.permission : 'unsupported';
+                const request = async () => {
+                  if (typeof Notification === 'undefined') return;
+                  const result = await Notification.requestPermission();
+                  if (result === 'granted') {
+                    const sw = await navigator.serviceWorker?.ready.catch(() => null);
+                    if (sw) sw.showNotification('🏠 Haushalts-Punkte', {
+                      body: 'Erinnerungen sind jetzt aktiv! ✅',
+                      icon: './icon.svg',
+                      badge: './icon.svg',
+                      tag: 'test',
+                    });
+                  }
+                };
+                if (perm === 'granted') return (
+                  <div style={{display:'flex', alignItems:'center', gap:10, background:'var(--green-light)',
+                    borderRadius:14, padding:'12px 14px', border:'1.5px solid var(--green)'}}>
+                    <span style={{fontSize:22}}>✅</span>
+                    <div>
+                      <div style={{fontWeight:800, fontSize:13, color:'var(--text)'}}>Erinnerungen aktiv</div>
+                      <div style={{fontWeight:600, fontSize:11, color:'var(--text-3)', marginTop:2}}>
+                        Badge auf App-Icon wird automatisch aktualisiert
+                      </div>
+                    </div>
+                  </div>
+                );
+                if (perm === 'denied') return (
+                  <div style={{background:'#fff5f5', borderRadius:14, padding:'12px 14px',
+                    border:'1.5px solid #fecaca', fontWeight:700, fontSize:12, color:'#dc2626'}}>
+                    ❌ Blockiert — bitte in den Systemeinstellungen erlauben:<br/>
+                    <span style={{fontWeight:600, color:'var(--text-2)'}}>Einstellungen → Benachrichtigungen → Safari / Browser → erlauben</span>
+                  </div>
+                );
+                return (
+                  <button onClick={request} style={{
+                    width:'100%', padding:'13px', borderRadius:14, border:'none',
+                    background:'var(--d-color)', color:'#fff',
+                    fontFamily:'Nunito', fontWeight:800, fontSize:14, cursor:'pointer',
+                  }}>🔔 Erinnerungen aktivieren</button>
+                );
+              })()}
+            </div>
+
             <div style={{fontWeight:800, fontSize:14, color:'var(--text)', marginBottom:12}}>🗑️ Woche zurücksetzen</div>
             <div style={{background:'#fff', borderRadius:20, padding:'18px', boxShadow:'var(--shadow)'}}>
               <div style={{fontWeight:600, fontSize:13, color:'var(--text-2)', marginBottom:14}}>
@@ -2117,6 +2169,55 @@ function App() {
     }
     return () => { clearTimeout(timeout); try { fbRef.off('value', handler); } catch(e){} };
   }, []);
+
+  // ── Badge + tägliche Erinnerung ──────────────────────────────
+  useEffect(() => {
+    if (!state || !loggedIn) return;
+
+    // Offene Aufgaben über beide Kinder zählen
+    const openCount = KIDS.reduce((s, k) => {
+      const confirmed = getKidConfirmed(state.completions, k.id, state.weekKey, state.tasks).length;
+      return s + (state.tasks.length - confirmed);
+    }, 0);
+
+    // App-Badge setzen (Zahl auf dem Icon)
+    if ('setAppBadge' in navigator) {
+      openCount > 0
+        ? navigator.setAppBadge(openCount).catch(() => {})
+        : navigator.clearAppBadge().catch(() => {});
+    }
+
+    // Einmal täglich Benachrichtigung senden (nur wenn Erlaubnis vorhanden)
+    const sendDailyReminder = async () => {
+      if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+      const today = new Date().toDateString();
+      if (localStorage.getItem('_reminder_' + today)) return; // schon heute gesendet
+      const hour = new Date().getHours();
+      if (hour < 7 || hour >= 21) return; // nur tagsüber
+
+      const lines = KIDS.map(k => {
+        const remaining = state.tasks.filter(t => {
+          const { confirmed } = getTaskStatus(state.completions[k.id]?.[t.id], state.weekKey);
+          return confirmed < (t.count || 1);
+        });
+        return remaining.length > 0 ? `${k.name}: ${remaining.length} Aufgabe${remaining.length > 1 ? 'n' : ''} offen` : null;
+      }).filter(Boolean);
+
+      if (lines.length === 0) return;
+      const sw = await navigator.serviceWorker?.ready.catch(() => null);
+      if (!sw) return;
+      await sw.showNotification('🏠 Haushalts-Punkte', {
+        body: lines.join(' · '),
+        icon: './icon.svg',
+        badge: './icon.svg',
+        tag: 'daily-reminder',
+        renotify: false,
+      });
+      localStorage.setItem('_reminder_' + today, '1');
+    };
+
+    sendDailyReminder();
+  }, [state, loggedIn]);
 
   if(!loggedIn) return <LoginScreen onLogin={() => setLoggedIn(true)}/>;
 
