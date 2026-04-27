@@ -1398,6 +1398,125 @@ function TaskCard({ task, confirmed, pending, color, light, mid, onToggle, onInf
   );
 }
 
+// ── Progress Chart ────────────────────────────────────────────
+function ProgressChart({ state, activeKid }) {
+  const kid   = KIDS.find(k => k.id === activeKid);
+  const week  = state.weekKey;
+  const tasks = state.tasks;
+  const penaltyDefs = state.penaltyDefs || PENALTIES_DEF;
+
+  const pts    = getKidNetPts(state.completions, state.penalties, activeKid, week, tasks, penaltyDefs);
+  const maxPts = maxPtsFor(tasks);
+  const pct    = maxPts > 0 ? pts / maxPts : 0;
+  const THRESH = 0.65;
+
+  // SVG gauge layout
+  const CX = 100, CY = 90, R = 68;
+
+  // Arc path: pct of the top semicircle, from left→right going through top
+  // sweep=0 (counter-clockwise in SVG y-down = visually through the top)
+  const arcD = (p) => {
+    p = Math.max(0.0001, Math.min(p, 0.9999));
+    const theta = Math.PI * (1 - p);            // angle from left, going CCW
+    const ex = CX + R * Math.cos(theta);
+    const ey = CY - R * Math.sin(theta);        // minus: SVG y flipped
+    return `M ${CX - R} ${CY} A ${R} ${R} 0 0 0 ${ex} ${ey}`;
+  };
+
+  // Threshold tick & label position
+  const tA  = Math.PI * (1 - THRESH);
+  const tick = {
+    ox: CX + (R + 11) * Math.cos(tA), oy: CY - (R + 11) * Math.sin(tA),
+    ix: CX + (R -  9) * Math.cos(tA), iy: CY - (R -  9) * Math.sin(tA),
+    lx: CX + (R + 24) * Math.cos(tA), ly: CY - (R + 24) * Math.sin(tA),
+  };
+
+  const confirmedCount = getKidConfirmed(state.completions, activeKid, week, tasks).length;
+  const prizeOk = pct >= THRESH;
+
+  return (
+    <div style={{background:'#fff', borderRadius:20, padding:'16px 18px', boxShadow:'var(--shadow)', marginBottom:18}}>
+      <div style={{fontWeight:800, fontSize:14, color:'var(--text)', marginBottom:1}}>📊 Mein Fortschritt</div>
+      <div style={{fontWeight:600, fontSize:11, color:'var(--text-3)', marginBottom:8}}>{kid.emoji} {kid.name}s Wochenbilanz</div>
+
+      {/* ── Semicircle gauge ── */}
+      <svg viewBox="0 0 200 100" style={{width:'100%', display:'block', overflow:'visible'}}>
+        {/* Track */}
+        <path d={arcD(0.9999)} fill="none" stroke="#EEECEA" strokeWidth={16} strokeLinecap="round"/>
+
+        {/* Progress */}
+        {pct > 0.002 && (
+          <path d={arcD(pct)} fill="none" stroke={kid.color} strokeWidth={16} strokeLinecap="round"
+            style={{transition:'d 0.8s ease'}}/>
+        )}
+
+        {/* 65 % threshold tick */}
+        <line x1={tick.ix} y1={tick.iy} x2={tick.ox} y2={tick.oy}
+          stroke="oklch(72% 0.16 85)" strokeWidth={3} strokeLinecap="round"/>
+        <text x={tick.lx} y={tick.ly + 3.5} textAnchor="middle"
+          fontSize="8.5" fontWeight="900" fill="oklch(60% 0.16 85)" fontFamily="Nunito">65%</text>
+
+        {/* Centre: points */}
+        <text x={CX} y={CY - 24} textAnchor="middle"
+          fontSize="30" fontWeight="900" fill={kid.color} fontFamily="Nunito">{pts}</text>
+        <text x={CX} y={CY - 8} textAnchor="middle"
+          fontSize="11" fontWeight="700" fill="#6B6866" fontFamily="Nunito">Punkte</text>
+        <text x={CX} y={CY + 6} textAnchor="middle"
+          fontSize="9.5" fontWeight="600" fill="#9E9C9A" fontFamily="Nunito">
+          {confirmedCount}/{tasks.length} Aufgaben ✓
+        </text>
+
+        {/* Axis labels */}
+        <text x={CX - R - 3} y={CY + 16} textAnchor="end"
+          fontSize="9" fontWeight="700" fill="#9E9C9A" fontFamily="Nunito">0</text>
+        <text x={CX + R + 3} y={CY + 16} textAnchor="start"
+          fontSize="9" fontWeight="700" fill="#9E9C9A" fontFamily="Nunito">{maxPts}</text>
+
+        {/* Prize banner */}
+        {prizeOk && (
+          <text x={CX} y={CY + 28} textAnchor="middle"
+            fontSize="11" fontWeight="900" fill="oklch(72% 0.16 85)" fontFamily="Nunito">
+            🏆 Taschengeld verdient!
+          </text>
+        )}
+      </svg>
+
+      {/* ── Task bars ── */}
+      <div style={{borderTop:'1px solid var(--border)', paddingTop:12, marginTop:2}}>
+        {tasks.map(t => {
+          const { confirmed, pending } = getTaskStatus(state.completions[activeKid]?.[t.id], week);
+          const count   = t.count || 1;
+          const isDone  = confirmed >= count;
+          const isPend  = pending > 0 && !isDone;
+          const barPct  = Math.round(Math.min(100, (isDone ? count : confirmed + (isPend ? 0.4 : 0)) / count * 100));
+          return (
+            <div key={t.id} style={{display:'flex', alignItems:'center', gap:8, marginBottom:9}}>
+              <span style={{fontSize:16, width:22, textAlign:'center', flexShrink:0}}>{t.icon}</span>
+              <div style={{flex:1, minWidth:0}}>
+                <div style={{display:'flex', justifyContent:'space-between', marginBottom:3}}>
+                  <span style={{fontWeight:600, fontSize:11, color:'var(--text-2)',
+                    overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{t.label}</span>
+                  <span style={{fontSize:10, fontWeight:800, flexShrink:0, marginLeft:4,
+                    color: isDone ? kid.color : isPend ? 'var(--orange)' : 'var(--text-3)'}}>
+                    {isDone ? '✓' : isPend ? '⏳' : t.pts + 'P'}
+                  </span>
+                </div>
+                <div style={{height:7, borderRadius:8, background:'var(--bg)', overflow:'hidden'}}>
+                  <div style={{
+                    height:'100%', borderRadius:8, transition:'width 0.7s ease',
+                    background: isDone ? kid.color : isPend ? 'var(--orange)' : kid.color,
+                    width: barPct + '%', opacity: isPend ? 0.6 : 1,
+                  }}/>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ── Home Screen ───────────────────────────────────────────────
 function HomeScreen({ state, activeKid, setActiveKid }) {
   const week = state.weekKey;
@@ -1507,6 +1626,9 @@ function HomeScreen({ state, activeKid, setActiveKid }) {
           ))}
         </div>
       </div>
+
+      {/* Progress Chart */}
+      <ProgressChart state={state} activeKid={activeKid}/>
 
       {/* Motivation */}
       <div style={{background:'var(--gold-light)', border:'1.5px solid var(--gold)', borderRadius:20, padding:'14px 18px',
