@@ -1385,82 +1385,71 @@ function TaskCard({ task, confirmed, pending, color, light, mid, onToggle, onInf
   const isDone = confirmed >= count;
   const isPending = pending > 0 && !isDone;
 
-  const handleSelect = () => {
-    if (!isDone && !isPending) {
+  // Karte antippen: auswählen ODER abwählen (wenn pending)
+  const handle = () => {
+    if (isDone) return;
+    if (!isPending) {
       const rect = ref.current?.getBoundingClientRect();
-      if(rect) setConfettiPos({x:rect.left+rect.width/2, y:rect.top+rect.height/2});
-      setFloating(true); setTimeout(()=>setFloating(false),1000);
-      onToggle(task.id);
+      if (rect) setConfettiPos({x: rect.left + rect.width/2, y: rect.top + rect.height/2});
+      setFloating(true);
+      setTimeout(() => setFloating(false), 1000);
     }
+    onToggle(task.id);
   };
 
   const bgColor = isDone ? light : isPending ? 'var(--orange-light)' : '#fff';
   const borderColor = isDone ? mid : isPending ? 'var(--orange)' : 'var(--border)';
 
   return (
-    <div ref={ref} style={{position:'relative', animation:`fadeUp 0.35s ${idx*0.06}s ease both`, marginBottom:10}}>
-      {floating && <FloatingPts pts={task.pts} color={color}/>}
-      {confettiPos && <Confetti x={confettiPos.x} y={confettiPos.y} color={color} onDone={()=>setConfettiPos(null)}/>}
-
-      {/* Main card */}
-      <div onClick={handleSelect} style={{
-        display:'flex', alignItems:'center', gap:14,
-        background:bgColor, border:`1.5px solid ${borderColor}`,
-        borderRadius: isPending ? '18px 18px 0 0' : 18, padding:'14px 16px',
-        cursor: isDone || isPending ? 'default' : 'pointer',
-        transition:'all 0.25s', boxShadow: isDone||isPending ? 'none' : 'var(--shadow)',
-      }}>
-        <div style={{fontSize:26, width:42, height:42, display:'flex', alignItems:'center', justifyContent:'center',
-          background: isDone ? mid : isPending ? 'var(--orange-light)' : 'var(--bg)',
-          borderRadius:12, transition:'all 0.2s',
-        }}>{task.icon}</div>
-        <div style={{flex:1}}>
-          <div style={{fontWeight:700, fontSize:15, color:'var(--text)',
-            textDecoration: isDone ? 'line-through' : 'none', textDecorationColor:'var(--text-3)'}}>
-            {task.label}
-          </div>
-          <div style={{fontWeight:700, fontSize:12, marginTop:2,
-            color: isDone ? color : isPending ? 'var(--orange)' : 'var(--text-3)'}}>
-            {task.pts} Punkte
-            {count > 1 && <span style={{marginLeft:6, background: isDone?color:isPending?'var(--orange)':'var(--bg)',
-              color: isDone||isPending?'#fff':'var(--text-3)', borderRadius:6, padding:'1px 5px', fontWeight:800, fontSize:11}}>
-              {confirmed}/{count}
-            </span>}
-            {isDone ? ' · ✓ Bestätigt' : isPending ? ' · ⏳ Wartet auf Bestätigung' : ''}
-          </div>
-        </div>
-        <div style={{
-          width:28, height:28, borderRadius:'50%', flexShrink:0,
-          border:`2px solid ${isDone ? color : isPending ? 'var(--orange)' : 'var(--border)'}`,
-          background: isDone ? color : isPending ? 'var(--orange-light)' : 'transparent',
-          display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.25s',
+    <div style={{marginBottom: hasInfo ? 0 : 10, animation:`fadeUp 0.35s ${idx*0.06}s ease both`}}>
+      <div ref={ref} style={{position:'relative'}}>
+        {floating && <FloatingPts pts={task.pts} color={color}/>}
+        {confettiPos && <Confetti x={confettiPos.x} y={confettiPos.y} color={color} onDone={()=>setConfettiPos(null)}/>}
+        <div onClick={handle} style={{
+          display:'flex', alignItems:'center', gap:14,
+          background:bgColor, border:`1.5px solid ${borderColor}`,
+          borderRadius:18, padding:'14px 16px',
+          cursor: isDone ? 'default' : 'pointer',
+          transition:'all 0.25s', boxShadow: isDone||isPending ? 'none' : 'var(--shadow)',
         }}>
-          {isDone && <span style={{color:'#fff', fontSize:13, fontWeight:900, animation:'checkPop 0.3s ease'}}>✓</span>}
-          {isPending && <span style={{fontSize:13, animation:'pendingPulse 1.5s infinite'}}>⏳</span>}
+          <div style={{fontSize:26, width:42, height:42, display:'flex', alignItems:'center', justifyContent:'center',
+            background: isDone ? mid : isPending ? 'var(--orange-light)' : 'var(--bg)',
+            borderRadius:12, transition:'all 0.2s',
+          }}>{task.icon}</div>
+          <div style={{flex:1}}>
+            <div style={{fontWeight:700, fontSize:15, color:'var(--text)',
+              textDecoration: isDone ? 'line-through' : 'none', textDecorationColor:'var(--text-3)'}}>
+              {task.label}
+            </div>
+            <div style={{fontWeight:700, fontSize:12, marginTop:2,
+              color: isDone ? color : isPending ? 'var(--orange)' : 'var(--text-3)'}}>
+              {task.pts} Punkte
+              {count > 1 && <span style={{marginLeft:6, background: isDone?color:isPending?'var(--orange)':'var(--bg)',
+                color: isDone||isPending?'#fff':'var(--text-3)', borderRadius:6, padding:'1px 5px', fontWeight:800, fontSize:11}}>
+                {confirmed}/{count}
+              </span>}
+              {isDone ? ' · ✓ Bestätigt' : isPending ? ' · ⏳ Nochmal tippen = Abbrechen' : ''}
+            </div>
+          </div>
+          <div style={{
+            width:28, height:28, borderRadius:'50%', flexShrink:0,
+            border:`2px solid ${isDone ? color : isPending ? 'var(--orange)' : 'var(--border)'}`,
+            background: isDone ? color : isPending ? 'var(--orange-light)' : 'transparent',
+            display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.25s',
+          }}>
+            {isDone && <span style={{color:'#fff', fontSize:13, fontWeight:900, animation:'checkPop 0.3s ease'}}>✓</span>}
+            {isPending && <span style={{fontSize:16}}>✕</span>}
+          </div>
         </div>
       </div>
-
-      {/* Abbrechen-Button: EIGENE Karte direkt unter der Hauptkarte — kein stopPropagation nötig */}
-      {isPending && (
-        <div onClick={()=>onToggle(task.id)} style={{
-          display:'flex', alignItems:'center', justifyContent:'center', gap:7,
-          background:'#fff3e0', border:'1.5px solid var(--orange)', borderTop:'none',
-          borderRadius:'0 0 18px 18px', padding:'10px 16px', cursor:'pointer',
-          transition:'background 0.15s',
-        }}>
-          <span style={{fontSize:14}}>✕</span>
-          <span style={{fontWeight:800, fontSize:13, color:'var(--orange)'}}>Abbrechen</span>
-        </div>
-      )}
 
       {/* Anleitung-Button: eigene Karte mit Abstand — vollständig getrennt vom Task-Toggle */}
       {hasInfo && onInfo && (
         <div onClick={()=>onInfo(task)} style={{
-          marginTop:5,
+          marginTop:4, marginBottom:10,
           display:'flex', alignItems:'center', gap:8,
           background:light, border:`1.5px solid ${mid}`,
           borderRadius:14, padding:'9px 16px', cursor:'pointer',
-          transition:'all 0.2s',
         }}>
           <span style={{fontSize:14}}>📋</span>
           <span style={{fontWeight:800, fontSize:12, color:color}}>Anleitung ansehen</span>
