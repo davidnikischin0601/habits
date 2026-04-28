@@ -1385,7 +1385,6 @@ function TaskCard({ task, confirmed, pending, color, light, mid, onToggle, onInf
   const isDone = confirmed >= count;
   const isPending = pending > 0 && !isDone;
 
-  // Only select (not deselect) via card tap — cancel is via explicit button
   const handleSelect = () => {
     if (!isDone && !isPending) {
       const rect = ref.current?.getBoundingClientRect();
@@ -1393,11 +1392,6 @@ function TaskCard({ task, confirmed, pending, color, light, mid, onToggle, onInf
       setFloating(true); setTimeout(()=>setFloating(false),1000);
       onToggle(task.id);
     }
-  };
-
-  const handleCancel = (e) => {
-    e.stopPropagation();
-    onToggle(task.id);
   };
 
   const bgColor = isDone ? light : isPending ? 'var(--orange-light)' : '#fff';
@@ -1408,11 +1402,11 @@ function TaskCard({ task, confirmed, pending, color, light, mid, onToggle, onInf
       {floating && <FloatingPts pts={task.pts} color={color}/>}
       {confettiPos && <Confetti x={confettiPos.x} y={confettiPos.y} color={color} onDone={()=>setConfettiPos(null)}/>}
 
-      {/* Main card — only clickable when not pending and not done */}
+      {/* Main card */}
       <div onClick={handleSelect} style={{
         display:'flex', alignItems:'center', gap:14,
         background:bgColor, border:`1.5px solid ${borderColor}`,
-        borderRadius:18, padding:'14px 16px',
+        borderRadius: isPending ? '18px 18px 0 0' : 18, padding:'14px 16px',
         cursor: isDone || isPending ? 'default' : 'pointer',
         transition:'all 0.25s', boxShadow: isDone||isPending ? 'none' : 'var(--shadow)',
       }}>
@@ -1434,17 +1428,6 @@ function TaskCard({ task, confirmed, pending, color, light, mid, onToggle, onInf
             </span>}
             {isDone ? ' · ✓ Bestätigt' : isPending ? ' · ⏳ Wartet auf Bestätigung' : ''}
           </div>
-          {/* Explicit cancel button — only visible when pending */}
-          {isPending && (
-            <div onClick={handleCancel} style={{
-              marginTop:8, display:'inline-flex', alignItems:'center', gap:5,
-              background:'#fff', border:'2px solid var(--orange)',
-              borderRadius:10, padding:'5px 12px', cursor:'pointer',
-            }}>
-              <span style={{fontSize:13}}>✕</span>
-              <span style={{fontWeight:800, fontSize:12, color:'var(--orange)'}}>Abbrechen</span>
-            </div>
-          )}
         </div>
         <div style={{
           width:28, height:28, borderRadius:'50%', flexShrink:0,
@@ -1456,6 +1439,19 @@ function TaskCard({ task, confirmed, pending, color, light, mid, onToggle, onInf
           {isPending && <span style={{fontSize:13, animation:'pendingPulse 1.5s infinite'}}>⏳</span>}
         </div>
       </div>
+
+      {/* Abbrechen-Button: EIGENE Karte direkt unter der Hauptkarte — kein stopPropagation nötig */}
+      {isPending && (
+        <div onClick={()=>onToggle(task.id)} style={{
+          display:'flex', alignItems:'center', justifyContent:'center', gap:7,
+          background:'#fff3e0', border:'1.5px solid var(--orange)', borderTop:'none',
+          borderRadius:'0 0 18px 18px', padding:'10px 16px', cursor:'pointer',
+          transition:'background 0.15s',
+        }}>
+          <span style={{fontSize:14}}>✕</span>
+          <span style={{fontWeight:800, fontSize:13, color:'var(--orange)'}}>Abbrechen</span>
+        </div>
+      )}
 
       {/* Anleitung-Button: eigene Karte mit Abstand — vollständig getrennt vom Task-Toggle */}
       {hasInfo && onInfo && (
