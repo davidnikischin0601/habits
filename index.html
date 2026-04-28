@@ -1385,30 +1385,35 @@ function TaskCard({ task, confirmed, pending, color, light, mid, onToggle, onInf
   const isDone = confirmed >= count;
   const isPending = pending > 0 && !isDone;
 
-  const handle = () => {
-    if (!isDone) {
-      if (pending === 0) {
-        const rect = ref.current?.getBoundingClientRect();
-        if(rect) setConfettiPos({x:rect.left+rect.width/2, y:rect.top+rect.height/2});
-        setFloating(true); setTimeout(()=>setFloating(false),1000);
-      }
+  // Only select (not deselect) via card tap — cancel is via explicit button
+  const handleSelect = () => {
+    if (!isDone && !isPending) {
+      const rect = ref.current?.getBoundingClientRect();
+      if(rect) setConfettiPos({x:rect.left+rect.width/2, y:rect.top+rect.height/2});
+      setFloating(true); setTimeout(()=>setFloating(false),1000);
       onToggle(task.id);
     }
   };
+
+  const handleCancel = (e) => {
+    e.stopPropagation();
+    onToggle(task.id);
+  };
+
   const bgColor = isDone ? light : isPending ? 'var(--orange-light)' : '#fff';
   const borderColor = isDone ? mid : isPending ? 'var(--orange)' : 'var(--border)';
 
   return (
     <div ref={ref} style={{position:'relative', animation:`fadeUp 0.35s ${idx*0.06}s ease both`, marginBottom:10}}>
-      {floating && !isDone && !isPending && <FloatingPts pts={task.pts} color={color}/>}
+      {floating && <FloatingPts pts={task.pts} color={color}/>}
       {confettiPos && <Confetti x={confettiPos.x} y={confettiPos.y} color={color} onDone={()=>setConfettiPos(null)}/>}
 
-      {/* Main clickable card */}
-      <div onClick={handle} style={{
+      {/* Main card — only clickable when not pending and not done */}
+      <div onClick={handleSelect} style={{
         display:'flex', alignItems:'center', gap:14,
         background:bgColor, border:`1.5px solid ${borderColor}`,
-        borderRadius: hasInfo ? '18px 18px 0 0' : 18, padding:'14px 16px',
-        cursor: isDone ? 'default' : 'pointer',
+        borderRadius:18, padding:'14px 16px',
+        cursor: isDone || isPending ? 'default' : 'pointer',
         transition:'all 0.25s', boxShadow: isDone||isPending ? 'none' : 'var(--shadow)',
       }}>
         <div style={{fontSize:26, width:42, height:42, display:'flex', alignItems:'center', justifyContent:'center',
@@ -1427,8 +1432,19 @@ function TaskCard({ task, confirmed, pending, color, light, mid, onToggle, onInf
               color: isDone||isPending?'#fff':'var(--text-3)', borderRadius:6, padding:'1px 5px', fontWeight:800, fontSize:11}}>
               {confirmed}/{count}
             </span>}
-            {isPending ? ' · ⏳ Wartet… Nochmal tippen = Abbrechen ✕' : isDone ? ' · ✓ Bestätigt' : ''}
+            {isDone ? ' · ✓ Bestätigt' : isPending ? ' · ⏳ Wartet auf Bestätigung' : ''}
           </div>
+          {/* Explicit cancel button — only visible when pending */}
+          {isPending && (
+            <div onClick={handleCancel} style={{
+              marginTop:8, display:'inline-flex', alignItems:'center', gap:5,
+              background:'#fff', border:'2px solid var(--orange)',
+              borderRadius:10, padding:'5px 12px', cursor:'pointer',
+            }}>
+              <span style={{fontSize:13}}>✕</span>
+              <span style={{fontWeight:800, fontSize:12, color:'var(--orange)'}}>Abbrechen</span>
+            </div>
+          )}
         </div>
         <div style={{
           width:28, height:28, borderRadius:'50%', flexShrink:0,
@@ -1441,12 +1457,13 @@ function TaskCard({ task, confirmed, pending, color, light, mid, onToggle, onInf
         </div>
       </div>
 
-      {/* Anleitung-Button: separater Bereich UNTER der Karte — kein versehentliches Antippen */}
+      {/* Anleitung-Button: eigene Karte mit Abstand — vollständig getrennt vom Task-Toggle */}
       {hasInfo && onInfo && (
         <div onClick={()=>onInfo(task)} style={{
+          marginTop:5,
           display:'flex', alignItems:'center', gap:8,
-          background:light, border:`1.5px solid ${borderColor}`, borderTop:'none',
-          borderRadius:'0 0 18px 18px', padding:'8px 16px', cursor:'pointer',
+          background:light, border:`1.5px solid ${mid}`,
+          borderRadius:14, padding:'9px 16px', cursor:'pointer',
           transition:'all 0.2s',
         }}>
           <span style={{fontSize:14}}>📋</span>
