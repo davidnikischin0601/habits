@@ -155,7 +155,7 @@ function getTaskStatus(val, weekKey) {
   return { confirmed:0, pending:0 };
 }
 function maxPtsFor(tasks) {
-  return tasks.reduce((s,t) => s + t.pts * (t.count||1), 0);
+  return tasks.filter(t => !t.bonus).reduce((s,t) => s + t.pts * (t.count||1), 0);
 }
 function getKidPts(completions, kidId, weekKey, tasks) {
   return tasks.reduce((s,t) => {
@@ -576,6 +576,7 @@ function TaskManager({ state, setState }) {
 
   const [count, setCount] = useState('1');
   const [localCount, setLocalCount] = useState({});
+  const [isBonus, setIsBonus] = useState(false);
 
   const hasInfo = (taskId) => {
     const ktd = state.kidTaskData || {};
@@ -588,12 +589,12 @@ function TaskManager({ state, setState }) {
   const addTask = () => {
     if(!label.trim()) return;
     const taskCount = Math.max(1, parseInt(count)||1);
-    const newTask = { id: 'custom_' + Date.now(), icon: icon.trim() || '⭐', label: label.trim(), pts: Math.max(1, parseInt(pts)||5), count: taskCount };
+    const newTask = { id: 'custom_' + Date.now(), icon: icon.trim() || '⭐', label: label.trim(), pts: Math.max(1, parseInt(pts)||5), count: taskCount, ...(isBonus ? { bonus: true } : {}) };
     setState(prev => {
       const next = { ...prev, tasks: [...prev.tasks, newTask] };
       saveState(next); return next;
     });
-    setLabel(''); setPts('5'); setIcon('⭐'); setCount('1');
+    setLabel(''); setPts('5'); setIcon('⭐'); setCount('1'); setIsBonus(false);
     setSaved(true); setTimeout(() => setSaved(false), 1500);
   };
 
@@ -669,6 +670,7 @@ function TaskManager({ state, setState }) {
                   overflow:'hidden', textOverflow:'ellipsis'}}>{task.label}</div>
                 <div style={{display:'flex', alignItems:'center', gap:4, marginTop:1}}>
                   {(task.count||1) > 1 && <span style={{fontSize:10, fontWeight:800, color:'#fff', background:'var(--d-color)', borderRadius:6, padding:'1px 5px'}}>{task.count}×</span>}
+                  {task.bonus && <span style={{fontSize:10, fontWeight:800, color:'#fff', background:'var(--gold)', borderRadius:6, padding:'1px 5px'}}>⭐ Bonus</span>}
                   {hasInfo(task.id) && <span style={{fontSize:10, fontWeight:600, color:'var(--d-color)'}}>📝📷</span>}
                 </div>
               </div>
@@ -739,7 +741,7 @@ function TaskManager({ state, setState }) {
               color:'var(--text)', outline:'none',
             }}/>
         </div>
-        <div style={{display:'flex', gap:8}}>
+        <div style={{display:'flex', gap:8, marginBottom:10}}>
           <div style={{display:'flex', alignItems:'center', gap:4, background:'var(--bg)', borderRadius:12, padding:'0 10px', border:'1.5px solid var(--border)'}}>
             <input type="text" inputMode="numeric" value={pts}
               onChange={e=>setPts(e.target.value.replace(/[^0-9]/g,''))}
@@ -754,12 +756,17 @@ function TaskManager({ state, setState }) {
                 fontWeight:800, fontSize:15, color:'var(--text)', textAlign:'center', outline:'none'}}/>
             <span style={{fontWeight:600, fontSize:12, color:'var(--text-3)'}}>×</span>
           </div>
-          <button onClick={addTask} style={{
-            flex:1, padding:'10px', borderRadius:12, border:'none',
-            background: saved ? 'var(--green)' : 'var(--d-color)', color:'#fff',
-            fontFamily:'Nunito', fontWeight:800, fontSize:14, cursor:'pointer', transition:'background 0.2s',
-          }}>{saved ? '✓ Gespeichert!' : 'Hinzufügen'}</button>
+          <button onClick={()=>setIsBonus(b=>!b)} style={{
+            padding:'10px 12px', borderRadius:12, border:`1.5px solid ${isBonus?'var(--gold)':'var(--border)'}`,
+            background: isBonus ? 'var(--gold-light)' : 'var(--bg)', color: isBonus ? 'var(--gold)' : 'var(--text-3)',
+            fontFamily:'Nunito', fontWeight:800, fontSize:13, cursor:'pointer', transition:'all 0.2s', flexShrink:0,
+          }}>⭐ Bonus</button>
         </div>
+        <button onClick={addTask} style={{
+          width:'100%', padding:'10px', borderRadius:12, border:'none',
+          background: saved ? 'var(--green)' : 'var(--d-color)', color:'#fff',
+          fontFamily:'Nunito', fontWeight:800, fontSize:14, cursor:'pointer', transition:'background 0.2s',
+        }}>{saved ? '✓ Gespeichert!' : 'Hinzufügen'}</button>
       </div>
     </div>
   );
@@ -1759,10 +1766,14 @@ function TasksScreen({ state, setState, activeKid }) {
     });
   };
 
+  const regularTasks = tasks.filter(t => !t.bonus);
+  const bonusTasks = tasks.filter(t => t.bonus);
+
   const pts = getKidNetPts(state.completions, state.penalties, activeKid, week, tasks, penaltyDefs);
   const penaltyPts = getKidPenaltyPts(state.penalties, activeKid, week, penaltyDefs);
   const activePenalties = getKidActivePenalties(state.penalties, activeKid, week, penaltyDefs);
   const confirmed = getKidConfirmed(state.completions, activeKid, week, tasks).length;
+  const confirmedRegular = getKidConfirmed(state.completions, activeKid, week, regularTasks).length;
   const pending = getKidPending(state.completions, activeKid, week, tasks).length;
 
   const halfThreshold = maxPtsFor(tasks) * 0.5;
@@ -1804,7 +1815,7 @@ function TasksScreen({ state, setState, activeKid }) {
       </div>
 
       <div style={{fontWeight:800, fontSize:14, color:'var(--text)', marginBottom:12}}>Aufgaben dieser Woche</div>
-      {tasks.map((task,i) => {
+      {regularTasks.map((task,i) => {
         const { confirmed, pending } = getTaskStatus(state.completions[activeKid]?.[task.id], week);
         return (
           <TaskCard key={task.id} task={task} confirmed={confirmed} pending={pending} color={kid.color}
@@ -1814,6 +1825,23 @@ function TasksScreen({ state, setState, activeKid }) {
             idx={i}/>
         );
       })}
+
+      {bonusTasks.length > 0 && (
+        <div style={{marginTop:8}}>
+          <div style={{fontWeight:800, fontSize:14, color:'var(--gold)', marginBottom:10, display:'flex', alignItems:'center', gap:6}}>
+            <span>⭐</span> Bonus-Aufgaben
+            <span style={{fontWeight:600, fontSize:11, color:'var(--text-3)', marginLeft:4}}>zählen nicht zum Maximum</span>
+          </div>
+          {bonusTasks.map((task,i) => {
+            const { confirmed, pending } = getTaskStatus(state.completions[activeKid]?.[task.id], week);
+            return (
+              <TaskCard key={task.id} task={task} confirmed={confirmed} pending={pending}
+                color='var(--gold)' light='var(--gold-light)' mid='oklch(88% 0.09 85)'
+                onToggle={toggle} onInfo={setInfoTask} hasInfo={hasInfo(task.id)} idx={i}/>
+            );
+          })}
+        </div>
+      )}
 
       {infoTask && (() => {
         const { notes, photos } = getKidTaskInfo(infoTask.id);
@@ -1852,7 +1880,7 @@ function TasksScreen({ state, setState, activeKid }) {
         </div>
       )}
 
-      {confirmed===tasks.length && tasks.length > 0 && (
+      {confirmedRegular===regularTasks.length && regularTasks.length > 0 && (
         <div style={{textAlign:'center', padding:'20px', marginTop:8,
           background:'var(--green-light)', borderRadius:20, border:'1.5px solid var(--green)', animation:'pop 0.4s ease'}}>
           <div style={{fontSize:40}}>🎉</div>
@@ -2428,6 +2456,40 @@ function App() {
     };
 
     sendDailyReminder();
+
+    // Freitags-Endspurt: Benachrichtigung wenn Wochenziel (65%) noch nicht erreicht
+    const sendFridayReminder = async () => {
+      if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+      const now = new Date();
+      if (now.getDay() !== 5) return; // nur Freitag
+      const todayStr = now.toDateString();
+      if (localStorage.getItem('_friday_' + todayStr)) return;
+      const hour = now.getHours();
+      if (hour < 10 || hour >= 20) return; // tagsüber zwischen 10–20 Uhr
+      const maxPts = maxPtsFor(state.tasks);
+      if (maxPts === 0) return;
+      const goal = Math.round(maxPts * 0.65);
+      const pd = state.penaltyDefs || PENALTIES_DEF;
+      const lines = KIDS.map(k => {
+        const kPts = getKidNetPts(state.completions, state.penalties, k.id, state.weekKey, state.tasks, pd);
+        const missing = goal - kPts;
+        if (missing <= 0) return null;
+        return `${k.name}: noch ${missing} Punkte bis zum Wochenziel`;
+      }).filter(Boolean);
+      if (lines.length === 0) return;
+      const sw = await navigator.serviceWorker?.ready.catch(() => null);
+      if (!sw) return;
+      await sw.showNotification('🏃 Endspurt! Wochenziel in Sicht!', {
+        body: lines.join('\n'),
+        icon: './icon.svg',
+        badge: './icon.svg',
+        tag: 'friday-reminder',
+        renotify: false,
+      });
+      localStorage.setItem('_friday_' + todayStr, '1');
+    };
+
+    sendFridayReminder();
 
     // Sofort benachrichtigen wenn Kinder neue Aufgaben zur Bestätigung einreichen
     const notifyPending = async () => {
