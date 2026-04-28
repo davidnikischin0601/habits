@@ -76,6 +76,8 @@ body {
 @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-8px)} 75%{transform:translateX(8px)} }
 @keyframes pendingPulse { 0%,100%{opacity:1} 50%{opacity:0.55} }
 @keyframes spin { to{transform:rotate(360deg)} }
+@keyframes confettiFallBig { 0%{transform:translateY(0) rotate(0deg);opacity:1} 100%{transform:translateY(110vh) rotate(1080deg);opacity:0} }
+@keyframes halfwayPop { 0%{transform:scale(0.6) translateY(40px);opacity:0} 60%{transform:scale(1.06) translateY(-6px)} 100%{transform:scale(1) translateY(0);opacity:1} }
 </style>
 </head>
 <body>
@@ -133,6 +135,7 @@ function defaultState() {
     tasks: TASKS_DEF,
     penaltyDefs: PENALTIES_DEF,
     kidTaskData: { daniil:{}, viktoria:{} },
+    celebrated50: {},
   };
 }
 function saveState(s) {
@@ -206,6 +209,57 @@ function FloatingPts({ pts, color }) {
       fontFamily:'Nunito', fontWeight:900, fontSize:17, color,
       animation:'starFloat 0.9s ease-out forwards', pointerEvents:'none',
     }}>+{pts}✨</div>
+  );
+}
+
+// ── Halfway Celebration Modal ─────────────────────────────────
+function HalfwayModal({ kid, pts, onClose }) {
+  const pieces = ['★','●','■','◆','▲','✦','♥','✿'];
+  const colors = [kid.color, '#FFD700', '#FF9EBC', '#A0D9FF', '#C4F0C5', '#FFC49B', '#D4AAFF', '#FF8C69'];
+  const confettiItems = Array.from({length:48}).map((_,i) => ({
+    piece: pieces[i%pieces.length],
+    color: colors[i%colors.length],
+    left: (Math.random()*105 - 2) + 'vw',
+    size: 10 + Math.random()*16,
+    dur: (0.9 + Math.random()*1.4).toFixed(2),
+    delay: (Math.random()*0.7).toFixed(2),
+  }));
+  return (
+    <div style={{
+      position:'fixed', inset:0, background:'rgba(0,0,0,0.65)', zIndex:1500,
+      display:'flex', alignItems:'center', justifyContent:'center',
+      padding:'0 24px',
+    }} onClick={onClose}>
+      {confettiItems.map((c,i) => (
+        <span key={i} style={{
+          position:'fixed', top:-24, left:c.left,
+          fontSize:c.size, color:c.color, pointerEvents:'none',
+          animation:`confettiFallBig ${c.dur}s ease-out ${c.delay}s both`,
+        }}>{c.piece}</span>
+      ))}
+      <div onClick={e=>e.stopPropagation()} style={{
+        background:'#fff', borderRadius:28, padding:'36px 28px 30px',
+        maxWidth:320, width:'100%', textAlign:'center',
+        animation:'halfwayPop 0.45s cubic-bezier(.34,1.56,.64,1)',
+        boxShadow:'0 24px 72px rgba(0,0,0,0.35)',
+        position:'relative', zIndex:1501,
+      }}>
+        <div style={{fontSize:62, lineHeight:1, marginBottom:10}}>🎊</div>
+        <div style={{fontWeight:900, fontSize:28, color:'var(--text)', marginBottom:6, letterSpacing:'-0.5px'}}>Halbzeit!</div>
+        <div style={{fontWeight:800, fontSize:17, color:kid.color, marginBottom:8}}>{kid.emoji} {kid.name}</div>
+        <div style={{fontWeight:600, fontSize:14, color:'var(--text-2)', marginBottom:6, lineHeight:1.5}}>
+          Du hast bereits <span style={{fontWeight:900, color:kid.color}}>{pts} Punkte</span> — über die Hälfte geschafft! 🚀
+        </div>
+        <div style={{fontSize:13, color:'var(--text-3)', fontWeight:600, marginBottom:24}}>Weiter so – du bist auf einem super Kurs!</div>
+        <button onClick={onClose} style={{
+          width:'100%', padding:'15px 0', borderRadius:16, border:'none',
+          background:kid.color, color:'#fff',
+          fontFamily:'Nunito', fontWeight:900, fontSize:16, cursor:'pointer',
+          boxShadow:`0 6px 20px ${kid.color}55`,
+          transition:'transform 0.1s',
+        }}>Weiter so! 💪</button>
+      </div>
+    </div>
   );
 }
 
@@ -1345,13 +1399,15 @@ function TaskCard({ task, confirmed, pending, color, light, mid, onToggle, onInf
   const borderColor = isDone ? mid : isPending ? 'var(--orange)' : 'var(--border)';
 
   return (
-    <div ref={ref} style={{position:'relative', animation:`fadeUp 0.35s ${idx*0.06}s ease both`}}>
+    <div ref={ref} style={{position:'relative', animation:`fadeUp 0.35s ${idx*0.06}s ease both`, marginBottom:10}}>
       {floating && !isDone && !isPending && <FloatingPts pts={task.pts} color={color}/>}
       {confettiPos && <Confetti x={confettiPos.x} y={confettiPos.y} color={color} onDone={()=>setConfettiPos(null)}/>}
+
+      {/* Main clickable card */}
       <div onClick={handle} style={{
         display:'flex', alignItems:'center', gap:14,
         background:bgColor, border:`1.5px solid ${borderColor}`,
-        borderRadius:18, padding:'14px 16px', marginBottom:10,
+        borderRadius: hasInfo ? '18px 18px 0 0' : 18, padding:'14px 16px',
         cursor: isDone ? 'default' : 'pointer',
         transition:'all 0.25s', boxShadow: isDone||isPending ? 'none' : 'var(--shadow)',
       }}>
@@ -1371,18 +1427,8 @@ function TaskCard({ task, confirmed, pending, color, light, mid, onToggle, onInf
               color: isDone||isPending?'#fff':'var(--text-3)', borderRadius:6, padding:'1px 5px', fontWeight:800, fontSize:11}}>
               {confirmed}/{count}
             </span>}
-            {isPending ? ' · ⏳ Wartet auf Bestätigung' : isDone ? ' · ✓ Bestätigt' : ''}
+            {isPending ? ' · ⏳ Wartet… Nochmal tippen = Abbrechen ✕' : isDone ? ' · ✓ Bestätigt' : ''}
           </div>
-          {hasInfo && onInfo && (
-            <div onClick={e=>{e.stopPropagation(); onInfo(task);}} style={{
-              marginTop:7, display:'inline-flex', alignItems:'center', gap:5,
-              background:light, border:`1.5px solid ${mid}`,
-              borderRadius:10, padding:'5px 11px', cursor:'pointer',
-            }}>
-              <span style={{fontSize:14}}>📋</span>
-              <span style={{fontWeight:800, fontSize:12, color:color}}>Anleitung ansehen</span>
-            </div>
-          )}
         </div>
         <div style={{
           width:28, height:28, borderRadius:'50%', flexShrink:0,
@@ -1394,6 +1440,19 @@ function TaskCard({ task, confirmed, pending, color, light, mid, onToggle, onInf
           {isPending && <span style={{fontSize:13, animation:'pendingPulse 1.5s infinite'}}>⏳</span>}
         </div>
       </div>
+
+      {/* Anleitung-Button: separater Bereich UNTER der Karte — kein versehentliches Antippen */}
+      {hasInfo && onInfo && (
+        <div onClick={()=>onInfo(task)} style={{
+          display:'flex', alignItems:'center', gap:8,
+          background:light, border:`1.5px solid ${borderColor}`, borderTop:'none',
+          borderRadius:'0 0 18px 18px', padding:'8px 16px', cursor:'pointer',
+          transition:'all 0.2s',
+        }}>
+          <span style={{fontSize:14}}>📋</span>
+          <span style={{fontWeight:800, fontSize:12, color:color}}>Anleitung ansehen</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -1652,6 +1711,7 @@ function TasksScreen({ state, setState, activeKid }) {
   const tasks = state.tasks;
   const penaltyDefs = state.penaltyDefs || PENALTIES_DEF;
   const [infoTask, setInfoTask] = useState(null);
+  const [celebrationDismissed, setCelebrationDismissed] = useState({});
 
   const toggle = useCallback((taskId) => {
     setState(prev => {
@@ -1701,6 +1761,19 @@ function TasksScreen({ state, setState, activeKid }) {
   const activePenalties = getKidActivePenalties(state.penalties, activeKid, week, penaltyDefs);
   const confirmed = getKidConfirmed(state.completions, activeKid, week, tasks).length;
   const pending = getKidPending(state.completions, activeKid, week, tasks).length;
+
+  const halfThreshold = maxPtsFor(tasks) * 0.5;
+  const alreadyCelebrated50 = state.celebrated50?.[activeKid] === week;
+  const showHalftime = pts >= halfThreshold && !alreadyCelebrated50 && !celebrationDismissed[activeKid];
+
+  const dismissHalftime = () => {
+    setCelebrationDismissed(d => ({ ...d, [activeKid]: true }));
+    setState(prev => {
+      const celebrated50 = { ...(prev.celebrated50||{}), [activeKid]: week };
+      const next = { ...prev, celebrated50 };
+      saveState(next); return next;
+    });
+  };
 
   return (
     <div style={{padding:'0 20px 20px'}}>
@@ -1784,6 +1857,8 @@ function TasksScreen({ state, setState, activeKid }) {
           <div style={{fontWeight:600, fontSize:14, color:'var(--text-2)', marginTop:4}}>Fantastische Woche, {kid.name}!</div>
         </div>
       )}
+
+      {showHalftime && <HalfwayModal kid={kid} pts={pts} onClose={dismissHalftime}/>}
     </div>
   );
 }
