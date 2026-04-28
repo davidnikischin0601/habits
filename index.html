@@ -136,6 +136,7 @@ function defaultState() {
     penaltyDefs: PENALTIES_DEF,
     kidTaskData: { daniil:{}, viktoria:{} },
     celebrated50: {},
+    fridayNotified: null,
   };
 }
 function saveState(s) {
@@ -2463,7 +2464,7 @@ function App() {
       const now = new Date();
       if (now.getDay() !== 5) return; // nur Freitag
       const todayStr = now.toDateString();
-      if (localStorage.getItem('_friday_' + todayStr)) return;
+      if (state.fridayNotified === todayStr) return;
       const hour = now.getHours();
       if (hour < 10 || hour >= 20) return; // tagsüber zwischen 10–20 Uhr
       const maxPts = maxPtsFor(state.tasks);
@@ -2486,7 +2487,7 @@ function App() {
         tag: 'friday-reminder',
         renotify: false,
       });
-      localStorage.setItem('_friday_' + todayStr, '1');
+      fbRef.update({ fridayNotified: todayStr });
     };
 
     sendFridayReminder();
