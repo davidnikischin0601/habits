@@ -113,10 +113,21 @@ const PENALTIES_DEF = [
   { id:'p_light',    icon:'💡', label:'Licht angelassen',                 pts:3  },
   { id:'p_clothes',  icon:'👔', label:'Schmutzige Wäsche nicht im Korb', pts:3  },
 ];
-const KIDS = [
-  { id:'daniil',   name:'Daniil',   emoji:'🏆', color:'var(--d-color)', light:'var(--d-light)', mid:'var(--d-mid)' },
-  { id:'viktoria', name:'Viktoria', emoji:'🌷', color:'var(--v-color)', light:'var(--v-light)', mid:'var(--v-mid)' },
+const KIDS_DEF = [
+  { id:'daniil',   name:'Daniil',   emoji:'🏆', color:'oklch(65% 0.18 265)', light:'oklch(95% 0.05 265)', mid:'oklch(88% 0.09 265)' },
+  { id:'viktoria', name:'Viktoria', emoji:'🌷', color:'oklch(65% 0.18 340)', light:'oklch(95% 0.05 340)', mid:'oklch(88% 0.09 340)' },
 ];
+const KID_PALETTES = [
+  { color:'oklch(65% 0.18 265)', light:'oklch(95% 0.05 265)', mid:'oklch(88% 0.09 265)' },
+  { color:'oklch(65% 0.18 340)', light:'oklch(95% 0.05 340)', mid:'oklch(88% 0.09 340)' },
+  { color:'oklch(68% 0.15 145)', light:'oklch(96% 0.05 145)', mid:'oklch(88% 0.08 145)' },
+  { color:'oklch(65% 0.18 55)',  light:'oklch(95% 0.05 55)',  mid:'oklch(88% 0.09 55)'  },
+  { color:'oklch(65% 0.18 300)', light:'oklch(95% 0.05 300)', mid:'oklch(88% 0.09 300)' },
+  { color:'oklch(65% 0.18 200)', light:'oklch(95% 0.05 200)', mid:'oklch(88% 0.09 200)' },
+  { color:'oklch(65% 0.18 20)',  light:'oklch(95% 0.05 20)',  mid:'oklch(88% 0.09 20)'  },
+  { color:'oklch(65% 0.18 80)',  light:'oklch(95% 0.05 80)',  mid:'oklch(88% 0.09 80)'  },
+];
+const KID_EMOJIS = ['🏆','🌷','⭐','🦁','🐯','🦊','🐼','🐸','🌈','🎯','🚀','🌟','💎','🔥','🌺','🎪','🦋','🐬','🦄','🎸'];
 
 function getWeekKey() {
   const d = new Date();
@@ -127,14 +138,16 @@ function getWeekKey() {
 }
 
 function defaultState() {
+  const emptyKidData = Object.fromEntries(KIDS_DEF.map(k => [k.id, {}]));
   return {
     weekKey: getWeekKey(),
-    completions: { daniil:{}, viktoria:{} },
-    penalties:   { daniil:{}, viktoria:{} },
-    settings: { pin:'1234', prize1:'5', prize2:'2', bonus:'10' },
+    kids: KIDS_DEF,
+    completions: {...emptyKidData},
+    penalties:   {...emptyKidData},
+    settings: { pin:'1234', prize1:'5', prize2:'2', bonus:'10', threshold:'65' },
     tasks: TASKS_DEF,
     penaltyDefs: PENALTIES_DEF,
-    kidTaskData: { daniil:{}, viktoria:{} },
+    kidTaskData: {...emptyKidData},
     celebrated50: {},
     fridayNotified: null,
   };
@@ -378,6 +391,7 @@ function AppPasswordChanger() {
 // ── Penalty Manager ───────────────────────────────────────────
 function PenaltyManager({ state, setState }) {
   const week = state.weekKey;
+  const kids = state.kids || KIDS_DEF;
   const penaltyDefs = state.penaltyDefs || PENALTIES_DEF;
   const [customLabel, setCustomLabel] = useState({});
   const [customPts, setCustomPts] = useState({});
@@ -415,7 +429,7 @@ function PenaltyManager({ state, setState }) {
     setState(prev => {
       const newDefs = (prev.penaltyDefs || PENALTIES_DEF).filter(p => p.id !== penaltyId);
       const penalties = { ...prev.penalties };
-      KIDS.forEach(k => {
+      (prev.kids || KIDS_DEF).forEach(k => {
         if (penalties[k.id]) {
           penalties[k.id] = { ...penalties[k.id] };
           delete penalties[k.id][penaltyId];
@@ -478,7 +492,7 @@ function PenaltyManager({ state, setState }) {
                 <span style={{fontSize:20, width:28, textAlign:'center', flexShrink:0}}>{p.icon}</span>
                 <div style={{flex:1, minWidth:0}}>
                   <div style={{fontWeight:700, fontSize:13, color:'var(--text)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{p.label}</div>
-                  <div style={{fontWeight:600, fontSize:11, color:'#dc2626'}}>-{p.pts} Punkte{p.kidId ? ' (nur '+KIDS.find(k=>k.id===p.kidId)?.name+')' : ''}</div>
+                  <div style={{fontWeight:600, fontSize:11, color:'#dc2626'}}>-{p.pts} Punkte{p.kidId ? ' (nur '+kids.find(k=>k.id===p.kidId)?.name+')' : ''}</div>
                 </div>
                 <button onClick={()=>startEdit(p)} style={{background:'var(--d-light)', border:'1.5px solid var(--d-mid)',
                   borderRadius:8, width:28, height:28, cursor:'pointer', fontSize:13, flexShrink:0,
@@ -493,7 +507,7 @@ function PenaltyManager({ state, setState }) {
       </div>
 
       {/* Toggle per kid */}
-      {KIDS.map(kid => {
+      {kids.map(kid => {
         const active = getKidActivePenalties(state.penalties, kid.id, week, penaltyDefs);
         const totalPts = active.reduce((s,p)=>s+p.pts,0);
         return (
@@ -574,14 +588,26 @@ function TaskManager({ state, setState }) {
   const [editTask, setEditTask] = useState(null);
   const [localPts, setLocalPts] = useState({});
   const tasks = state.tasks;
+  const kids = state.kids || KIDS_DEF;
 
   const [count, setCount] = useState('1');
   const [localCount, setLocalCount] = useState({});
+  const [localLabel, setLocalLabel] = useState({});
   const [isBonus, setIsBonus] = useState(false);
+
+  const commitLabel = (id) => {
+    const raw = (localLabel[id] || '').trim();
+    if (!raw) { setLocalLabel(p => { const n={...p}; delete n[id]; return n; }); return; }
+    setState(prev => {
+      const next = { ...prev, tasks: prev.tasks.map(t => t.id===id ? {...t, label: raw} : t) };
+      saveState(next); return next;
+    });
+    setLocalLabel(p => { const n={...p}; delete n[id]; return n; });
+  };
 
   const hasInfo = (taskId) => {
     const ktd = state.kidTaskData || {};
-    return KIDS.some(k => {
+    return kids.some(k => {
       const d = ktd[k.id]?.[taskId];
       return !!(d?.notes || '').trim() || (d?.photos || []).length > 0;
     });
@@ -630,8 +656,9 @@ function TaskManager({ state, setState }) {
 
   const handleEditSave = (taskId, kidData) => {
     setState(prev => {
-      const ktd = { ...(prev.kidTaskData || { daniil:{}, viktoria:{} }) };
-      KIDS.forEach(k => {
+      const curKids = prev.kids || KIDS_DEF;
+      const ktd = { ...(prev.kidTaskData || {}) };
+      curKids.forEach(k => {
         const d = kidData[k.id] || { notes:'', photos:[] };
         if (!ktd[k.id]) ktd[k.id] = {};
         if ((d.notes||'').trim() || (d.photos||[]).length > 0) {
@@ -652,6 +679,7 @@ function TaskManager({ state, setState }) {
       {editTask && (
         <TaskEditModal
           task={editTask}
+          kids={kids}
           kidTaskData={state.kidTaskData}
           onClose={()=>setEditTask(null)}
           onSave={(data)=>handleEditSave(editTask.id, data)}
@@ -667,8 +695,17 @@ function TaskManager({ state, setState }) {
               borderBottom: i<tasks.length-1 ? '1px solid var(--border)' : 'none'}}>
               <span style={{fontSize:22, width:32, textAlign:'center', flexShrink:0}}>{task.icon}</span>
               <div style={{flex:1, minWidth:0}}>
-                <div style={{fontWeight:700, fontSize:13, color:'var(--text)', whiteSpace:'nowrap',
-                  overflow:'hidden', textOverflow:'ellipsis'}}>{task.label}</div>
+                <input
+                  value={task.id in localLabel ? localLabel[task.id] : task.label}
+                  onChange={e=>setLocalLabel(p=>({...p,[task.id]:e.target.value}))}
+                  onBlur={()=>commitLabel(task.id)}
+                  onKeyDown={e=>e.key==='Enter'&&commitLabel(task.id)}
+                  style={{width:'100%', border:'none', borderBottom:'1.5px solid transparent', background:'transparent',
+                    fontFamily:'Nunito', fontWeight:700, fontSize:13, color:'var(--text)', outline:'none',
+                    padding:'2px 0', cursor:'text',
+                    borderBottomColor: task.id in localLabel ? 'var(--d-color)' : 'transparent',
+                  }}
+                />
                 <div style={{display:'flex', alignItems:'center', gap:4, marginTop:1}}>
                   {(task.count||1) > 1 && <span style={{fontSize:10, fontWeight:800, color:'#fff', background:'var(--d-color)', borderRadius:6, padding:'1px 5px'}}>{task.count}×</span>}
                   {task.bonus && <span style={{fontSize:10, fontWeight:800, color:'#fff', background:'var(--gold)', borderRadius:6, padding:'1px 5px'}}>⭐ Bonus</span>}
@@ -773,14 +810,204 @@ function TaskManager({ state, setState }) {
   );
 }
 
+// ── Kids Manager ─────────────────────────────────────────────
+function KidsManager({ state, setState }) {
+  const kids = state.kids || KIDS_DEF;
+  const [editId, setEditId] = useState(null);
+  const [editFields, setEditFields] = useState({ name:'', emoji:'' });
+  const [addName, setAddName] = useState('');
+  const [addEmoji, setAddEmoji] = useState(KID_EMOJIS[2]);
+  const [addColorIdx, setAddColorIdx] = useState(2);
+  const [saved, setSaved] = useState(false);
+
+  const startEdit = (kid) => {
+    const palIdx = KID_PALETTES.findIndex(p => p.color === kid.color);
+    setEditId(kid.id);
+    setEditFields({ name: kid.name, emoji: kid.emoji, colorIdx: palIdx >= 0 ? palIdx : 0 });
+  };
+
+  const saveEdit = () => {
+    if (!editFields.name.trim()) return;
+    const palette = KID_PALETTES[editFields.colorIdx % KID_PALETTES.length];
+    setState(prev => {
+      const newKids = (prev.kids || KIDS_DEF).map(k =>
+        k.id === editId ? { ...k, name: editFields.name.trim(), emoji: editFields.emoji, ...palette } : k
+      );
+      const next = { ...prev, kids: newKids };
+      saveState(next); return next;
+    });
+    setEditId(null);
+  };
+
+  const removeKid = (kidId) => {
+    if (kids.length <= 1) return;
+    if (!window.confirm('Kind wirklich löschen? Alle Daten dieses Kindes werden gelöscht.')) return;
+    setState(prev => {
+      const newKids = (prev.kids || KIDS_DEF).filter(k => k.id !== kidId);
+      const completions = { ...prev.completions }; delete completions[kidId];
+      const penalties = { ...prev.penalties }; delete penalties[kidId];
+      const kidTaskData = { ...(prev.kidTaskData||{}) }; delete kidTaskData[kidId];
+      const celebrated50 = { ...(prev.celebrated50||{}) }; delete celebrated50[kidId];
+      const next = { ...prev, kids: newKids, completions, penalties, kidTaskData, celebrated50 };
+      saveState(next); return next;
+    });
+  };
+
+  const addKid = () => {
+    if (!addName.trim()) return;
+    const id = 'kid_' + Date.now();
+    const palette = KID_PALETTES[addColorIdx % KID_PALETTES.length];
+    const newKid = { id, name: addName.trim(), emoji: addEmoji, ...palette };
+    setState(prev => {
+      const newKids = [...(prev.kids || KIDS_DEF), newKid];
+      const next = { ...prev, kids: newKids,
+        completions: { ...(prev.completions||{}), [id]: {} },
+        penalties:   { ...(prev.penalties||{}),   [id]: {} },
+        kidTaskData: { ...(prev.kidTaskData||{}),  [id]: {} },
+      };
+      saveState(next); return next;
+    });
+    setSaved(true); setTimeout(() => setSaved(false), 1500);
+    setAddName(''); setAddEmoji(KID_EMOJIS[2]);
+  };
+
+  const palette = KID_PALETTES[addColorIdx % KID_PALETTES.length];
+
+  return (
+    <div>
+      {/* Existing kids */}
+      <div style={{background:'#fff', borderRadius:20, padding:'4px 0', boxShadow:'var(--shadow)', marginBottom:20}}>
+        {kids.map((kid, i) => (
+          <div key={kid.id}>
+            {editId === kid.id ? (
+              <div style={{padding:'14px', borderBottom: i<kids.length-1?'1px solid var(--border)':'none', background:'#fffbeb'}}>
+                <div style={{display:'flex', gap:8, marginBottom:10, alignItems:'center'}}>
+                  <div style={{width:44, height:44, borderRadius:12, background:kid.light||'var(--d-light)',
+                    border:`2px solid ${kid.mid||'var(--d-mid)'}`,
+                    display:'flex', alignItems:'center', justifyContent:'center', fontSize:26}}>
+                    {editFields.emoji}
+                  </div>
+                  <input value={editFields.name} onChange={e=>setEditFields(f=>({...f,name:e.target.value}))}
+                    onKeyDown={e=>e.key==='Enter'&&saveEdit()}
+                    placeholder="Name"
+                    style={{flex:1, padding:'10px 12px', borderRadius:10, border:'1.5px solid var(--border)', background:'var(--bg)',
+                      fontFamily:'Nunito', fontWeight:700, fontSize:15, color:'var(--text)', outline:'none'}}/>
+                </div>
+                <div style={{display:'flex', flexWrap:'wrap', gap:6, marginBottom:8, padding:'8px',
+                  background:'var(--bg)', borderRadius:12, border:'1px solid var(--border)'}}>
+                  {KID_EMOJIS.map(e => (
+                    <button key={e} onClick={()=>setEditFields(f=>({...f,emoji:e}))} style={{
+                      width:36, height:36, borderRadius:10, border:'none', fontSize:22, cursor:'pointer',
+                      background: editFields.emoji===e ? 'var(--d-light)' : 'transparent',
+                      outline: editFields.emoji===e ? '2px solid var(--d-color)' : 'none',
+                    }}>{e}</button>
+                  ))}
+                </div>
+                <div style={{display:'flex', gap:8, flexWrap:'wrap', marginBottom:10}}>
+                  {KID_PALETTES.map((p, i) => (
+                    <div key={i} onClick={()=>setEditFields(f=>({...f,colorIdx:i}))} style={{
+                      width:28, height:28, borderRadius:'50%', background:p.color, cursor:'pointer',
+                      border: (editFields.colorIdx??0)===i ? '3px solid #1C1B1A' : '3px solid transparent',
+                      boxShadow: (editFields.colorIdx??0)===i ? `0 0 0 2px ${p.color}55` : 'none',
+                      transition:'all 0.15s',
+                    }}/>
+                  ))}
+                </div>
+                <div style={{display:'flex', gap:8}}>
+                  <button onClick={saveEdit} style={{flex:1, padding:'9px', borderRadius:10, border:'none',
+                    background:'var(--green)', color:'#fff', fontFamily:'Nunito', fontWeight:800, fontSize:13, cursor:'pointer'}}>✓ Speichern</button>
+                  <button onClick={()=>setEditId(null)} style={{padding:'9px 14px', borderRadius:10,
+                    border:'1.5px solid var(--border)', background:'#fff', fontFamily:'Nunito', fontWeight:700, fontSize:13, cursor:'pointer'}}>Abbrechen</button>
+                </div>
+              </div>
+            ) : (
+              <div style={{display:'flex', alignItems:'center', gap:12, padding:'12px 14px',
+                borderBottom: i<kids.length-1?'1px solid var(--border)':'none'}}>
+                <div style={{width:42, height:42, borderRadius:'50%', background:kid.color,
+                  display:'flex', alignItems:'center', justifyContent:'center', fontSize:22, color:'#fff', flexShrink:0,
+                  boxShadow:`0 3px 10px ${kid.color}44`}}>{kid.emoji}</div>
+                <div style={{flex:1, minWidth:0}}>
+                  <div style={{fontWeight:800, fontSize:15, color:'var(--text)'}}>{kid.name}</div>
+                  <div style={{width:16, height:8, borderRadius:4, background:kid.color, marginTop:4}}/>
+                </div>
+                <button onClick={()=>startEdit(kid)} style={{background:'var(--d-light)', border:'1.5px solid var(--d-mid)',
+                  borderRadius:8, width:32, height:32, cursor:'pointer', fontSize:14, flexShrink:0,
+                  display:'flex', alignItems:'center', justifyContent:'center'}}>✏️</button>
+                {kids.length > 1 && (
+                  <button onClick={()=>removeKid(kid.id)} style={{background:'#fff5f5', border:'1.5px solid #fecaca',
+                    borderRadius:8, width:32, height:32, cursor:'pointer', fontSize:14, color:'#dc2626', flexShrink:0,
+                    display:'flex', alignItems:'center', justifyContent:'center'}}>🗑</button>
+                )}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Add new kid */}
+      <div style={{background:'#fff', borderRadius:20, padding:'16px', boxShadow:'var(--shadow)'}}>
+        <div style={{fontWeight:800, fontSize:13, color:'var(--text)', marginBottom:12}}>➕ Neues Kind hinzufügen</div>
+
+        <div style={{marginBottom:10}}>
+          <div style={{fontWeight:700, fontSize:11, color:'var(--text-3)', marginBottom:6}}>Emoji wählen</div>
+          <div style={{display:'flex', flexWrap:'wrap', gap:6, padding:'10px', borderRadius:14,
+            border:'1.5px solid var(--border)', background:'var(--bg)'}}>
+            {KID_EMOJIS.map(e => (
+              <button key={e} onClick={()=>setAddEmoji(e)} style={{
+                width:36, height:36, borderRadius:10, border:'none', fontSize:22, cursor:'pointer',
+                background: addEmoji===e ? 'var(--d-light)' : 'transparent',
+                outline: addEmoji===e ? '2px solid var(--d-color)' : 'none',
+              }}>{e}</button>
+            ))}
+          </div>
+        </div>
+
+        <div style={{marginBottom:12}}>
+          <div style={{fontWeight:700, fontSize:11, color:'var(--text-3)', marginBottom:6}}>Farbe wählen</div>
+          <div style={{display:'flex', gap:8, flexWrap:'wrap'}}>
+            {KID_PALETTES.map((p, i) => (
+              <div key={i} onClick={()=>setAddColorIdx(i)} style={{
+                width:30, height:30, borderRadius:'50%', background:p.color, cursor:'pointer',
+                border: addColorIdx===i ? '3px solid #1C1B1A' : '3px solid transparent',
+                boxShadow: addColorIdx===i ? `0 0 0 2px ${p.color}55` : 'none',
+                transition:'all 0.15s',
+              }}/>
+            ))}
+          </div>
+        </div>
+
+        <div style={{display:'flex', gap:8, alignItems:'center', marginBottom:12}}>
+          <div style={{width:44, height:44, borderRadius:12, background:palette.light,
+            border:`2px solid ${palette.mid}`,
+            display:'flex', alignItems:'center', justifyContent:'center', fontSize:24, flexShrink:0}}>
+            {addEmoji}
+          </div>
+          <input value={addName} onChange={e=>setAddName(e.target.value)} placeholder="Name eingeben..."
+            onKeyDown={e=>e.key==='Enter'&&addKid()}
+            style={{flex:1, padding:'10px 12px', borderRadius:12, border:'1.5px solid var(--border)',
+              background:'var(--bg)', fontFamily:'Nunito', fontWeight:600, fontSize:14,
+              color:'var(--text)', outline:'none'}}/>
+        </div>
+
+        <button onClick={addKid} style={{
+          width:'100%', padding:'10px', borderRadius:12, border:'none',
+          background: saved ? 'var(--green)' : 'var(--d-color)', color:'#fff',
+          fontFamily:'Nunito', fontWeight:800, fontSize:14, cursor:'pointer', transition:'background 0.2s',
+        }}>{saved ? '✓ Hinzugefügt!' : 'Kind hinzufügen'}</button>
+      </div>
+    </div>
+  );
+}
+
 // ── Parent Mode Screen ────────────────────────────────────────
 function ParentScreen({ state, setState, onClose }) {
   const [confettis, setConfettis] = useState([]);
   const week = state.weekKey;
   const tasks = state.tasks;
+  const kids = state.kids || KIDS_DEF;
   const [tab, setTab] = useState('pending');
 
-  const allPending = KIDS.flatMap(k =>
+  const allPending = kids.flatMap(k =>
     getKidPending(state.completions, k.id, week, tasks).map(t => {
       const { pending } = getTaskStatus(state.completions[k.id]?.[t.id], week);
       return {...t, kid: k, pendingCount: pending || 1};
@@ -789,7 +1016,7 @@ function ParentScreen({ state, setState, onClose }) {
 
   const confirm = (kidId, taskId, e) => {
     const rect = e.currentTarget.getBoundingClientRect();
-    setConfettis(c => [...c, { id: Date.now()+taskId, x: rect.left+rect.width/2, y: rect.top, color: KIDS.find(k=>k.id===kidId).color }]);
+    setConfettis(c => [...c, { id: Date.now()+taskId, x: rect.left+rect.width/2, y: rect.top, color: kids.find(k=>k.id===kidId)?.color || 'oklch(65% 0.18 265)' }]);
     setState(prev => {
       const task = prev.tasks.find(t => t.id === taskId);
       const count = task?.count || 1;
@@ -840,7 +1067,7 @@ function ParentScreen({ state, setState, onClose }) {
     }
   };
 
-  const scores = KIDS.map(k => ({
+  const scores = kids.map(k => ({
     ...k,
     pts: getKidPts(state.completions, k.id, week, tasks),
     pending: getKidPending(state.completions, k.id, week, tasks).length,
@@ -862,8 +1089,8 @@ function ParentScreen({ state, setState, onClose }) {
       </div>
 
       {/* Sub Tabs */}
-      <div style={{background:'#fff', padding:'0 20px 12px', display:'flex', gap:8, borderBottom:'1px solid var(--border)'}}>
-        {[{id:'pending',label:`⏳ Ausstehend (${allPending.length})`},{id:'penalties',label:'⚡ Strafen'},{id:'tasks',label:'📋 Aufgaben'},{id:'settings',label:'⚙️ Einstellungen'}].map(t=>(
+      <div style={{background:'#fff', padding:'0 12px 12px', display:'flex', gap:6, borderBottom:'1px solid var(--border)', overflowX:'auto'}}>
+        {[{id:'pending',label:`⏳ (${allPending.length})`},{id:'penalties',label:'⚡ Strafen'},{id:'tasks',label:'📋 Aufgaben'},{id:'kids',label:'👨‍👩‍👧 Kinder'},{id:'settings',label:'⚙️ Einst.'}].map(t=>(
           <button key={t.id} onClick={()=>setTab(t.id)} style={{
             padding:'8px 16px', borderRadius:20, border:'none', fontFamily:'Nunito', fontWeight:700, fontSize:12, cursor:'pointer',
             background: tab===t.id ? 'var(--d-color)' : 'var(--bg)',
@@ -973,6 +1200,13 @@ function ParentScreen({ state, setState, onClose }) {
           </div>
         )}
 
+        {tab==='kids' && (
+          <div>
+            <div style={{fontWeight:800, fontSize:14, color:'var(--text)', marginBottom:12}}>👨‍👩‍👧 Kinder verwalten</div>
+            <KidsManager state={state} setState={setState}/>
+          </div>
+        )}
+
         {tab==='settings' && (
           <div>
             <div style={{fontWeight:800, fontSize:14, color:'var(--text)', marginBottom:12}}>💶 Wochenpreis (Taschengeld)</div>
@@ -1013,6 +1247,30 @@ function ParentScreen({ state, setState, onClose }) {
                     }}
                   />
                 </div>
+              </div>
+            </div>
+
+            <div style={{fontWeight:800, fontSize:14, color:'var(--text)', marginBottom:12}}>🎯 Gewinn-Schwellenwert</div>
+            <div style={{background:'#fff', borderRadius:20, padding:'18px', boxShadow:'var(--shadow)', marginBottom:20}}>
+              <div style={{fontWeight:600, fontSize:13, color:'var(--text-2)', marginBottom:6}}>
+                Mindest-Prozent für Taschengeld
+              </div>
+              <div style={{fontWeight:600, fontSize:11, color:'var(--text-3)', marginBottom:12}}>
+                Derzeit: {Math.ceil(maxPtsFor(tasks) * (Number(state.settings.threshold||65)/100))} von {maxPtsFor(tasks)} Punkten
+              </div>
+              <div style={{display:'flex', alignItems:'center', gap:12}}>
+                <input
+                  type="number" min="10" max="100" step="5"
+                  value={state.settings.threshold ?? '65'}
+                  onChange={e=>updatePrize('threshold', e.target.value)}
+                  style={{
+                    width:70, padding:'10px', borderRadius:12,
+                    border:'1.5px solid var(--border)', background:'var(--bg)',
+                    fontFamily:'Nunito', fontWeight:900, fontSize:22, color:'var(--text)',
+                    textAlign:'center', outline:'none',
+                  }}
+                />
+                <span style={{fontWeight:800, fontSize:20, color:'var(--text-2)'}}>%</span>
               </div>
             </div>
 
@@ -1113,7 +1371,10 @@ function ParentScreen({ state, setState, onClose }) {
               <button onClick={()=>{
                 if(window.confirm('Wirklich alle Aufgaben dieser Woche zurücksetzen?')) {
                   setState(prev=>{
-                    const next={...prev, completions:{daniil:{},viktoria:{}}, penalties:{daniil:{},viktoria:{}}};
+                    const curKids = prev.kids || KIDS_DEF;
+                    const emptyComps = Object.fromEntries(curKids.map(k=>[k.id,{}]));
+                    const emptyPens = Object.fromEntries(curKids.map(k=>[k.id,{}]));
+                    const next={...prev, completions:emptyComps, penalties:emptyPens};
                     saveState(next); return next;
                   });
                 }
@@ -1251,9 +1512,10 @@ function TaskInfoModal({ task, photos, onClose }) {
 }
 
 // ── Task Edit Modal (parent mode, per-kid data) ───────────────
-function TaskEditModal({ task, kidTaskData, onClose, onSave }) {
+function TaskEditModal({ task, kids, kidTaskData, onClose, onSave }) {
+  const resolvedKids = kids || KIDS_DEF;
   const fileRef = useRef(null);
-  const [activeTab, setActiveTab] = useState(KIDS[0].id);
+  const [activeTab, setActiveTab] = useState(resolvedKids[0]?.id || '');
   const [processing, setProcessing] = useState(false);
   const [preview, setPreview] = useState(null);
 
@@ -1261,10 +1523,9 @@ function TaskEditModal({ task, kidTaskData, onClose, onSave }) {
     const d = kidTaskData?.[kidId]?.[task.id] || {};
     return { notes: d.notes || '', photos: d.photos || [] };
   };
-  const [kidData, setKidData] = useState(() => ({
-    daniil: initKid('daniil'),
-    viktoria: initKid('viktoria'),
-  }));
+  const [kidData, setKidData] = useState(() =>
+    Object.fromEntries(resolvedKids.map(k => [k.id, initKid(k.id)]))
+  );
 
   const setKidField = (kidId, field, val) =>
     setKidData(prev => ({ ...prev, [kidId]: { ...prev[kidId], [field]: val } }));
@@ -1280,8 +1541,8 @@ function TaskEditModal({ task, kidTaskData, onClose, onSave }) {
     e.target.value = '';
   };
 
-  const cur = kidData[activeTab];
-  const curKid = KIDS.find(k => k.id === activeTab);
+  const cur = kidData[activeTab] || { notes:'', photos:[] };
+  const curKid = resolvedKids.find(k => k.id === activeTab);
 
   return (
     <div style={{
@@ -1306,8 +1567,8 @@ function TaskEditModal({ task, kidTaskData, onClose, onSave }) {
         </div>
 
         {/* Kid tabs */}
-        <div style={{display:'flex', gap:8, marginBottom:16, flexShrink:0}}>
-          {KIDS.map(k => (
+        <div style={{display:'flex', gap:8, marginBottom:16, flexShrink:0, flexWrap:'wrap'}}>
+          {resolvedKids.map(k => (
             <button key={k.id} onClick={()=>setActiveTab(k.id)} style={{
               flex:1, padding:'10px', borderRadius:14, border:'none', fontFamily:'Nunito',
               fontWeight:800, fontSize:14, cursor:'pointer', transition:'all 0.2s',
@@ -1469,7 +1730,8 @@ function TaskCard({ task, confirmed, pending, color, light, mid, onToggle, onInf
 
 // ── Progress Chart ────────────────────────────────────────────
 function ProgressChart({ state, activeKid }) {
-  const kid  = KIDS.find(k => k.id === activeKid);
+  const kids = state.kids || KIDS_DEF;
+  const kid  = kids.find(k => k.id === activeKid);
   const week = state.weekKey;
   const tasks = state.tasks;
   const penaltyDefs = state.penaltyDefs || PENALTIES_DEF;
@@ -1477,7 +1739,7 @@ function ProgressChart({ state, activeKid }) {
   const pts    = getKidNetPts(state.completions, state.penalties, activeKid, week, tasks, penaltyDefs);
   const maxPts = maxPtsFor(tasks);
   const pct    = maxPts > 0 ? Math.min(pts / maxPts, 1) : 0;
-  const THRESH = 0.65;
+  const THRESH = (Number(state.settings?.threshold) || 65) / 100;
 
   // Gauge via stroke-dasharray (same proven technique as the Ring component)
   // Circle rotated -180° → stroke starts at 9 o'clock (left), fills clockwise through top
@@ -1526,7 +1788,7 @@ function ProgressChart({ state, activeKid }) {
         <line x1={tick.ix} y1={tick.iy} x2={tick.ox} y2={tick.oy}
           stroke="oklch(65% 0.16 85)" strokeWidth={2.5} strokeLinecap="round"/>
         <text x={tick.lx} y={tick.ly + 4} textAnchor="middle"
-          fontSize="8" fontWeight="900" fill="oklch(55% 0.16 85)" fontFamily="Nunito">65%</text>
+          fontSize="8" fontWeight="900" fill="oklch(55% 0.16 85)" fontFamily="Nunito">{Math.round(THRESH*100)}%</text>
 
         {/* Centre text */}
         <text x={CX} y={CY - 22} textAnchor="middle"
@@ -1588,11 +1850,12 @@ function ProgressChart({ state, activeKid }) {
 
 // ── Home Screen ───────────────────────────────────────────────
 function HomeScreen({ state, activeKid, setActiveKid }) {
+  const kids = state.kids || KIDS_DEF;
   const week = state.weekKey;
   const tasks = state.tasks;
   const penaltyDefs = state.penaltyDefs || PENALTIES_DEF;
   const maxPts = maxPtsFor(tasks);
-  const scores = KIDS.map(k => ({
+  const scores = kids.map(k => ({
     ...k,
     pts: getKidNetPts(state.completions, state.penalties, k.id, week, tasks, penaltyDefs),
     rawPts: getKidPts(state.completions, k.id, week, tasks),
@@ -1603,7 +1866,7 @@ function HomeScreen({ state, activeKid, setActiveKid }) {
   const ak = scores.find(k=>k.id===activeKid);
   const pct = ak && maxPts > 0 ? ak.pts/maxPts : 0;
   const sortedScores = [...scores].sort((a,b)=>b.pts-a.pts);
-  const leader = sortedScores[0].pts > sortedScores[1].pts ? sortedScores[0] : null;
+  const leader = sortedScores.length >= 2 && sortedScores[0].pts > sortedScores[1].pts ? sortedScores[0] : null;
 
   const days = ['Mo','Di','Mi','Do','Fr','Sa','So'];
   const todayIdx = (() => { const d=new Date().getDay(); return d===0?6:d-1; })();
@@ -1614,9 +1877,9 @@ function HomeScreen({ state, activeKid, setActiveKid }) {
     <div style={{padding:'0 20px 20px', animation:'fadeUp 0.4s ease'}}>
       {/* Hero */}
       <div style={{
-        background:`linear-gradient(135deg, ${ak?.color} 0%, ${ak?.id==='daniil'?'oklch(52% 0.22 280)':'oklch(52% 0.22 355)'} 100%)`,
+        background:`linear-gradient(135deg, ${ak?.color||'oklch(65% 0.18 265)'} 0%, oklch(52% 0.22 280) 100%)`,
         borderRadius:24, padding:'24px 22px', marginBottom:18, color:'#fff',
-        boxShadow:`0 8px 32px ${ak?.color}44`, transition:'all 0.4s ease',
+        boxShadow:`0 8px 32px ${ak?.color||'oklch(65% 0.18 265)'}44`, transition:'all 0.4s ease',
       }}>
         <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start'}}>
           <div>
@@ -1716,7 +1979,8 @@ function HomeScreen({ state, activeKid, setActiveKid }) {
 
 // ── Tasks Screen ──────────────────────────────────────────────
 function TasksScreen({ state, setState, activeKid }) {
-  const kid = KIDS.find(k=>k.id===activeKid);
+  const kids = state.kids || KIDS_DEF;
+  const kid = kids.find(k=>k.id===activeKid);
   const week = state.weekKey;
   const tasks = state.tasks;
   const penaltyDefs = state.penaltyDefs || PENALTIES_DEF;
@@ -1750,8 +2014,7 @@ function TasksScreen({ state, setState, activeKid }) {
   }, [activeKid, week, setState]);
 
   const getKidTaskInfo = (taskId) => {
-    // Eigene Daten bevorzugen, sonst auf anderes Kind zurückfallen
-    for (const kid of [activeKid, ...KIDS.map(k => k.id).filter(id => id !== activeKid)]) {
+    for (const kid of [activeKid, ...kids.map(k => k.id).filter(id => id !== activeKid)]) {
       const d = state.kidTaskData?.[kid]?.[taskId];
       if ((d?.notes || '').trim() || (d?.photos || []).length > 0)
         return { notes: d?.notes || '', photos: d?.photos || [] };
@@ -1760,8 +2023,7 @@ function TasksScreen({ state, setState, activeKid }) {
   };
 
   const hasInfo = (taskId) => {
-    // Button zeigen wenn irgendein Kind Notizen/Fotos hat
-    return KIDS.some(k => {
+    return kids.some(k => {
       const d = state.kidTaskData?.[k.id]?.[taskId];
       return !!(d?.notes || '').trim() || (d?.photos || []).length > 0;
     });
@@ -1897,18 +2159,20 @@ function TasksScreen({ state, setState, activeKid }) {
 
 // ── Leaderboard ───────────────────────────────────────────────
 function LeaderboardScreen({ state }) {
+  const kids = state.kids || KIDS_DEF;
   const week = state.weekKey;
   const tasks = state.tasks;
   const penaltyDefs = state.penaltyDefs || PENALTIES_DEF;
   const maxPts = maxPtsFor(tasks);
-  const scores = KIDS.map(k=>({
+  const THRESH = (Number(state.settings?.threshold) || 65) / 100;
+  const scores = kids.map(k=>({
     ...k,
     pts: getKidNetPts(state.completions, state.penalties, k.id, week, tasks, penaltyDefs),
     penaltyPts: getKidPenaltyPts(state.penalties, k.id, week, penaltyDefs),
     confirmed: getKidConfirmed(state.completions, k.id, week, tasks).length,
     pending: getKidPending(state.completions, k.id, week, tasks).length,
   })).sort((a,b)=>b.pts-a.pts);
-  const isEqual = scores[0].pts===scores[1].pts;
+  const isEqual = scores.length < 2 || scores[0].pts===scores[1].pts;
   const { prize1, prize2, bonus } = state.settings;
   const prizes = [prize1, prize2];
   const bonusAmt = Number(bonus) || 0;
@@ -1946,7 +2210,7 @@ function LeaderboardScreen({ state }) {
             {k.penaltyPts>0 && <div style={{fontSize:11, fontWeight:700, color:'#dc2626', marginTop:2}}>⚡ -{k.penaltyPts} Strafe</div>}
 
             {prizes[i] && Number(prizes[i])>0 && (
-              maxPts>0 && k.pts>=maxPts*0.65 ? (
+              maxPts>0 && k.pts>=maxPts*THRESH ? (
                 <div style={{marginTop:12, background:'var(--gold-light)', border:'1.5px solid var(--gold)',
                   borderRadius:12, padding:'8px 10px'}}>
                   <div style={{fontSize:11, fontWeight:700, color:'var(--text-3)'}}>Preis 🎉</div>
@@ -1965,10 +2229,10 @@ function LeaderboardScreen({ state }) {
                   borderRadius:12, padding:'8px 10px'}}>
                   <div style={{fontSize:10, fontWeight:700, color:'#9a3412'}}>Taschengeld (€{prizes[i]}{i===0&&!isEqual&&bonusAmt>0?` + €${bonusAmt} Bonus`:''})</div>
                   <div style={{fontSize:14, fontWeight:900, color:'#ea580c'}}>
-                    noch {Math.max(0, Math.ceil(maxPts*0.65)-k.pts)} Pkt.
+                    noch {Math.max(0, Math.ceil(maxPts*THRESH)-k.pts)} Pkt.
                   </div>
                   <div style={{fontSize:9, fontWeight:600, color:'#c2410c'}}>
-                    Ziel: 65% = {Math.ceil(maxPts*0.65)} Pkt.
+                    Ziel: {Math.round(THRESH*100)}% = {Math.ceil(maxPts*THRESH)} Pkt.
                   </div>
                 </div>
               )
@@ -1997,7 +2261,7 @@ function LeaderboardScreen({ state }) {
               <div style={{fontWeight:600, fontSize:11, color:'var(--text-3)'}}>{task.pts} Punkte</div>
             </div>
             <div style={{display:'flex', gap:6}}>
-              {KIDS.map(k=>{
+              {kids.map(k=>{
                 const { confirmed: kConf, pending: kPend } = getTaskStatus(state.completions[k.id]?.[task.id], week);
                 const taskCount = task.count || 1;
                 const isConf = kConf >= taskCount;
@@ -2021,7 +2285,7 @@ function LeaderboardScreen({ state }) {
         ))}
       </div>
       <div style={{marginTop:12, display:'flex', gap:16, flexWrap:'wrap'}}>
-        {KIDS.map(k=>(
+        {kids.map(k=>(
           <div key={k.id} style={{display:'flex', alignItems:'center', gap:5}}>
             <div style={{width:12, height:12, borderRadius:'50%', background:k.color}}/>
             <span style={{fontSize:12, fontWeight:600, color:'var(--text-2)'}}>{k.name}</span>
@@ -2038,7 +2302,8 @@ function LeaderboardScreen({ state }) {
 
 // ── Calendar Screen ───────────────────────────────────────────
 function CalendarScreen({ state, activeKid }) {
-  const kid = KIDS.find(k => k.id === activeKid);
+  const kids = state.kids || KIDS_DEF;
+  const kid = kids.find(k => k.id === activeKid);
   const week = state.weekKey;
   const tasks = state.tasks;
   const penaltyDefs = state.penaltyDefs || PENALTIES_DEF;
@@ -2079,9 +2344,9 @@ function CalendarScreen({ state, activeKid }) {
 
       {/* Today banner */}
       <div style={{
-        background:`linear-gradient(135deg, ${kid.color} 0%, ${kid.id==='daniil'?'oklch(52% 0.22 280)':'oklch(52% 0.22 355)'} 100%)`,
+        background:`linear-gradient(135deg, ${kid?.color||'oklch(65% 0.18 265)'} 0%, oklch(52% 0.22 280) 100%)`,
         borderRadius:20, padding:'16px 20px', marginBottom:16, color:'#fff',
-        boxShadow:`0 6px 20px ${kid.color}44`,
+        boxShadow:`0 6px 20px ${kid?.color||'oklch(65% 0.18 265)'}44`,
       }}>
         <div style={{fontSize:12, fontWeight:700, opacity:0.8, marginBottom:2}}>{kid.emoji} Heute</div>
         <div style={{fontSize:22, fontWeight:900, lineHeight:1.2}}>
@@ -2204,8 +2469,9 @@ function CalendarScreen({ state, activeKid }) {
 }
 
 // ── Bottom Nav ────────────────────────────────────────────────
-function BottomNav({ tab, setTab, activeKid }) {
-  const kid = KIDS.find(k=>k.id===activeKid);
+function BottomNav({ tab, setTab, activeKid, kids }) {
+  const resolvedKids = kids || KIDS_DEF;
+  const kid = resolvedKids.find(k=>k.id===activeKid);
   const items = [{id:'home',icon:'🏠',label:'Übersicht'},{id:'tasks',icon:'✅',label:'Aufgaben'},{id:'rank',icon:'🏆',label:'Rangliste'},{id:'calendar',icon:'📅',label:'Kalender'}];
   return (
     <div style={{
@@ -2343,11 +2609,16 @@ function App() {
     setStateRaw(prev => {
       const next = typeof updater==='function' ? updater(prev) : updater;
       const cur = getWeekKey();
-      const final = next.weekKey !== cur
-        ? { ...next, weekKey: cur, completions: {daniil:{}, viktoria:{}} }
-        : next;
-      saveState(final);
-      return final;
+      if (next.weekKey !== cur) {
+        const curKids = next.kids || KIDS_DEF;
+        const emptyComps = Object.fromEntries(curKids.map(k=>[k.id,{}]));
+        const emptyPens = Object.fromEntries(curKids.map(k=>[k.id,{}]));
+        const final = { ...next, weekKey: cur, completions: emptyComps, penalties: emptyPens };
+        saveState(final);
+        return final;
+      }
+      saveState(next);
+      return next;
     });
   }, []);
 
@@ -2370,23 +2641,25 @@ function App() {
           setStateRaw(def);
         } else {
           // Firebase löscht leere Objekte — immer wiederherstellen
+          const loadedKids = raw.kids || KIDS_DEF;
           const data = {
             ...raw,
+            kids: loadedKids,
             tasks: raw.tasks || TASKS_DEF,
             penaltyDefs: raw.penaltyDefs || PENALTIES_DEF,
-            kidTaskData: raw.kidTaskData || { daniil:{}, viktoria:{} },
-            settings: { pin:'1234', prize1:'5', prize2:'2', bonus:'10', ...(raw.settings||{}) },
-            completions: {
-              daniil:  (raw.completions && raw.completions.daniil)  || {},
-              viktoria:(raw.completions && raw.completions.viktoria) || {},
-            },
-            penalties: {
-              daniil:  (raw.penalties && raw.penalties.daniil)  || {},
-              viktoria:(raw.penalties && raw.penalties.viktoria) || {},
-            },
+            kidTaskData: raw.kidTaskData || Object.fromEntries(loadedKids.map(k=>[k.id,{}])),
+            settings: { pin:'1234', prize1:'5', prize2:'2', bonus:'10', threshold:'65', ...(raw.settings||{}) },
+            completions: Object.fromEntries(
+              loadedKids.map(k => [k.id, (raw.completions && raw.completions[k.id]) || {}])
+            ),
+            penalties: Object.fromEntries(
+              loadedKids.map(k => [k.id, (raw.penalties && raw.penalties[k.id]) || {}])
+            ),
           };
           if (data.weekKey !== cur) {
-            const reset = { ...data, weekKey: cur, completions: {daniil:{}, viktoria:{}}, penalties: {daniil:{}, viktoria:{}} };
+            const emptyComps = Object.fromEntries(loadedKids.map(k=>[k.id,{}]));
+            const emptyPens = Object.fromEntries(loadedKids.map(k=>[k.id,{}]));
+            const reset = { ...data, weekKey: cur, completions: emptyComps, penalties: emptyPens };
             fbRef.set(reset);
             setStateRaw(reset);
           } else {
@@ -2414,8 +2687,9 @@ function App() {
   useEffect(() => {
     if (!state || !loggedIn) return;
 
-    // Offene Aufgaben über beide Kinder zählen
-    const openCount = KIDS.reduce((s, k) => {
+    // Offene Aufgaben über alle Kinder zählen
+    const stateKids = state.kids || KIDS_DEF;
+    const openCount = stateKids.reduce((s, k) => {
       const confirmed = getKidConfirmed(state.completions, k.id, state.weekKey, state.tasks).length;
       return s + (state.tasks.length - confirmed);
     }, 0);
@@ -2435,7 +2709,7 @@ function App() {
       const hour = new Date().getHours();
       if (hour < 7 || hour >= 21) return; // nur tagsüber
 
-      const lines = KIDS.map(k => {
+      const lines = stateKids.map(k => {
         const remaining = state.tasks.filter(t => {
           const { confirmed } = getTaskStatus(state.completions[k.id]?.[t.id], state.weekKey);
           return confirmed < (t.count || 1);
@@ -2469,9 +2743,10 @@ function App() {
       if (hour < 10 || hour >= 20) return; // tagsüber zwischen 10–20 Uhr
       const maxPts = maxPtsFor(state.tasks);
       if (maxPts === 0) return;
-      const goal = Math.round(maxPts * 0.65);
+      const thresh = (Number(state.settings?.threshold) || 65) / 100;
+      const goal = Math.round(maxPts * thresh);
       const pd = state.penaltyDefs || PENALTIES_DEF;
-      const lines = KIDS.map(k => {
+      const lines = stateKids.map(k => {
         const kPts = getKidNetPts(state.completions, state.penalties, k.id, state.weekKey, state.tasks, pd);
         const missing = goal - kPts;
         if (missing <= 0) return null;
@@ -2495,7 +2770,7 @@ function App() {
     // Sofort benachrichtigen wenn Kinder neue Aufgaben zur Bestätigung einreichen
     const notifyPending = async () => {
       if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
-      const pending = KIDS.flatMap(k =>
+      const pending = stateKids.flatMap(k =>
         getKidPending(state.completions, k.id, state.weekKey, state.tasks)
           .map(t => k.name + ':' + t.label)
       ).sort();
@@ -2538,7 +2813,9 @@ function App() {
     </div>
   );
 
-  const pendingCount = KIDS.reduce((s,k)=>s+getKidPending(state.completions,k.id,state.weekKey,state.tasks).length, 0);
+  const appKids = state.kids || KIDS_DEF;
+  const pendingCount = appKids.reduce((s,k)=>s+getKidPending(state.completions,k.id,state.weekKey,state.tasks).length, 0);
+  const safeActiveKid = appKids.find(k=>k.id===activeKid) ? activeKid : appKids[0]?.id || activeKid;
 
   return (
     <div style={{
@@ -2563,13 +2840,13 @@ function App() {
           })()}
         </div>
         <div style={{display:'flex', gap:8, alignItems:'center'}}>
-          {tab!=='rank' && KIDS.map(k=>(
+          {tab!=='rank' && appKids.map(k=>(
             <div key={k.id} onClick={()=>setActiveKid(k.id)} style={{
               padding:'6px 14px', borderRadius:20,
-              background: activeKid===k.id ? k.color : 'var(--bg)',
-              color: activeKid===k.id ? '#fff' : 'var(--text-2)',
+              background: safeActiveKid===k.id ? k.color : 'var(--bg)',
+              color: safeActiveKid===k.id ? '#fff' : 'var(--text-2)',
               fontWeight:700, fontSize:13, cursor:'pointer', transition:'all 0.2s',
-              boxShadow: activeKid===k.id ? `0 4px 12px ${k.color}44` : 'none',
+              boxShadow: safeActiveKid===k.id ? `0 4px 12px ${k.color}44` : 'none',
             }}>{k.name}</div>
           ))}
           {/* Parent lock button */}
@@ -2591,13 +2868,13 @@ function App() {
       </div>
 
       <div style={{flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch'}}>
-        {tab==='home'     && <HomeScreen  state={state} activeKid={activeKid} setActiveKid={setActiveKid}/>}
-        {tab==='tasks'    && <TasksScreen state={state} setState={setState} activeKid={activeKid}/>}
+        {tab==='home'     && <HomeScreen  state={state} activeKid={safeActiveKid} setActiveKid={setActiveKid}/>}
+        {tab==='tasks'    && <TasksScreen state={state} setState={setState} activeKid={safeActiveKid}/>}
         {tab==='rank'     && <LeaderboardScreen state={state}/>}
-        {tab==='calendar' && <CalendarScreen state={state} activeKid={activeKid}/>}
+        {tab==='calendar' && <CalendarScreen state={state} activeKid={safeActiveKid}/>}
       </div>
 
-      <BottomNav tab={tab} setTab={setTab} activeKid={activeKid}/>
+      <BottomNav tab={tab} setTab={setTab} activeKid={safeActiveKid} kids={appKids}/>
 
       {showPin && (
         <PinModal
